@@ -78,6 +78,8 @@ export class GameScene extends Phaser.Scene {
     if (sp != null) state.time.speed = Number(sp) as 0 | 1 | 2 | 3;
 
     store.state = state;
+    store.bus = this.bus;
+    store.busVersion++;
     this.sim = new Simulation(state, FEATURES, this.bus, this.world, store);
     this.camera = new CameraController(this);
     this.camera.attract = !!req.attract;
@@ -188,6 +190,10 @@ export class GameScene extends Phaser.Scene {
         } catch {
           return false;
         }
+      },
+      getCameraView: () => {
+        const v = this.cameras.main.worldView;
+        return { x: v.x, y: v.y, w: v.width, h: v.height, zoom: this.cameras.main.zoom };
       },
       toTitle: () => {
         const s = buildState('bombardiman', 'normal', 29, this.world, FEATURES);

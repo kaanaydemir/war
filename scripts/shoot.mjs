@@ -2,6 +2,8 @@
  * QA screenshot harness.
  *   node scripts/shoot.mjs [--scenario name[,name…]] [--out dir] [--t 0.5] [--zoom 3]
  *                          [--ui 0|1] [--wait ms] [--size 1600x900] [--lm landmark] [--url extra]
+ *                          [--dist dir]  (serve a custom build dir: npx vite build --outDir <dir>)
+ *                          [--tag suffix] (appended to the png name)
  * Builds nothing: run `npm run build` first. Serves dist/ with vite preview,
  * opens headless Chromium (SwiftShader WebGL), waits for window.__ready,
  * lets effects play for --wait ms, then saves PNGs to shots/.
@@ -31,7 +33,9 @@ const wait = Number(args.wait ?? 2500);
 const port = 4173 + Math.floor(Math.random() * 500);
 mkdirSync(out, { recursive: true });
 
-const server = spawn('npx', ['vite', 'preview', '--port', String(port), '--strictPort'], { stdio: 'pipe' });
+const previewArgs = ['vite', 'preview', '--port', String(port), '--strictPort'];
+if (args.dist) previewArgs.push('--outDir', args.dist);
+const server = spawn('npx', previewArgs, { stdio: 'pipe' });
 await new Promise((res, rej) => {
   const to = setTimeout(() => rej(new Error('preview timeout')), 20000);
   server.stdout.on('data', (d) => {

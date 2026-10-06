@@ -1,6 +1,7 @@
 import type { Command } from './commands';
 import type { GameState } from './state';
 import type { PickResult } from './feature';
+import type { Bus } from './bus';
 
 /**
  * Store: the bridge between the Preact UI and the game.
@@ -51,6 +52,9 @@ export class Store {
   };
   /** Increments on every notify — use as a render key. */
   version = 0;
+  /** Event bus of the CURRENT game scene (replaced on every scene restart; check `busVersion`). */
+  bus: Bus | null = null;
+  busVersion = 0;
   private listeners = new Set<Listener>();
   private queue: Command[] = [];
   /** Game-level hooks installed by GameScene (new game, load scenario, camera…). */
@@ -63,6 +67,8 @@ export class Store {
     load(): boolean;
     hasSave(): boolean;
     toTitle(): void;
+    /** Camera view in world pixels + zoom (for the minimap). */
+    getCameraView(): { x: number; y: number; w: number; h: number; zoom: number };
   } = {
     newGame() {},
     loadScenario() {},
@@ -72,6 +78,7 @@ export class Store {
     load: () => false,
     hasSave: () => false,
     toTitle() {},
+    getCameraView: () => ({ x: 0, y: 0, w: 1, h: 1, zoom: 1 }),
   };
 
   subscribe(fn: Listener): () => void {
