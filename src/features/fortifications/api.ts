@@ -120,3 +120,25 @@ export function repairSection(state: GameState, bus: Bus, id: SectionId, amount:
   recomputeBreach(s);
   bus.emit('wall:repaired', { sectionId: id, amount });
 }
+
+/** Point at fraction t (0..1) along the section's polyline (by length). */
+export function sectionPoint(id: SectionId, t: number): TilePt {
+  const p = sectionPath(id);
+  if (p.length < 2) return p[0] ?? { tx: 0, ty: 0 };
+  const lens: number[] = [];
+  let total = 0;
+  for (let i = 0; i + 1 < p.length; i++) {
+    const l = Math.hypot(p[i + 1].tx - p[i].tx, p[i + 1].ty - p[i].ty);
+    lens.push(l);
+    total += l;
+  }
+  let d = Math.max(0, Math.min(1, t)) * total;
+  for (let i = 0; i < lens.length; i++) {
+    if (d <= lens[i] || i === lens.length - 1) {
+      const f = lens[i] ? d / lens[i] : 0;
+      return { tx: p[i].tx + (p[i + 1].tx - p[i].tx) * f, ty: p[i].ty + (p[i + 1].ty - p[i].ty) * f };
+    }
+    d -= lens[i];
+  }
+  return p[p.length - 1];
+}
