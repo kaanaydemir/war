@@ -1,4 +1,4 @@
-import { GEO_LAT0, GEO_LON0, TILES_PER_DEG_LAT, TILES_PER_DEG_LON } from '../core/constants';
+import { GEO_LAT0, GEO_LON1, TILES_PER_DEG_LAT, TILES_PER_DEG_LON } from '../core/constants';
 import type { TilePt } from '../core/iso';
 
 /**
@@ -9,12 +9,29 @@ import type { TilePt } from '../core/iso';
  */
 export type LatLon = [number, number]; // [lat, lon]
 
+/**
+ * Geographic → tile. +tx = SOUTH, +ty = WEST (see core/constants.ts for why: it puts
+ * the Ottoman side of the land walls toward the viewer).
+ */
 export function geoToTile(lat: number, lon: number): TilePt {
   return {
-    tx: (lon - GEO_LON0) * TILES_PER_DEG_LON,
-    ty: (GEO_LAT0 - lat) * TILES_PER_DEG_LAT,
+    tx: (GEO_LAT0 - lat) * TILES_PER_DEG_LAT,
+    ty: (GEO_LON1 - lon) * TILES_PER_DEG_LON,
   };
 }
+
+/** Tile → geographic [lat, lon]. */
+export function tileToGeo(tx: number, ty: number): LatLon {
+  return [GEO_LAT0 - tx / TILES_PER_DEG_LAT, GEO_LON1 - ty / TILES_PER_DEG_LON];
+}
+
+/** Unit tile deltas for compass directions. Use these instead of hard-coded ±tx/±ty. */
+export const GEO_DIR = {
+  north: { tx: -1, ty: 0 },
+  south: { tx: 1, ty: 0 },
+  east: { tx: 0, ty: -1 },
+  west: { tx: 0, ty: 1 },
+} as const;
 
 export function geoPolyToTiles(pts: LatLon[]): TilePt[] {
   return pts.map(([la, lo]) => geoToTile(la, lo));

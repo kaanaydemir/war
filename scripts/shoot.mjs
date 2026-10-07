@@ -33,9 +33,10 @@ const wait = Number(args.wait ?? 2500);
 const port = 4173 + Math.floor(Math.random() * 500);
 mkdirSync(out, { recursive: true });
 
-const previewArgs = ['vite', 'preview', '--port', String(port), '--strictPort'];
+const previewArgs = ['preview', '--port', String(port), '--strictPort'];
 if (args.dist) previewArgs.push('--outDir', args.dist);
-const server = spawn('npx', previewArgs, { stdio: 'pipe' });
+// Run the vite binary directly (not via npx) so kill() really stops the server.
+const server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', ...previewArgs], { stdio: 'pipe' });
 await new Promise((res, rej) => {
   const to = setTimeout(() => rej(new Error('preview timeout')), 20000);
   server.stdout.on('data', (d) => {

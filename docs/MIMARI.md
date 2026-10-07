@@ -55,7 +55,13 @@ Cross-feature APIs live in `src/features/<id>/api.ts`; signatures there are cont
   Sync sprites from state by entity id every frame (create/update/destroy). Never mutate
   state in render. Cull: only create/animate sprites near the camera `worldView`.
 - **Depth:** `core/layers.ts`. Ground-standing objects: `setDepth(footWorldY)`.
-- **Coordinates:** tiles (tx east, ty south; north = screen up-right). `world.toWorld(tx,ty)`
+- **Coordinates:** tiles with **+tx = geographic SOUTH, +ty = geographic WEST** (since 7 Oct;
+  previously tx east / ty south). On screen: north = up-left, WEST (Thrace, the Ottoman camp)
+  = DOWN-LEFT toward the viewer, south (Marmara) = down-right, east (city, Galata, Bosphorus)
+  = up-right — so the outer face of the land walls, the moat and the assaults face the camera.
+  Never hard-code compass directions as tile deltas: use `GEO_DIR`, `geoToTile`, `tileToGeo`
+  (data/geography.ts). Map edges: tx 0 = north, tx MAP_W = south, ty 0 = east, ty MAP_H = west.
+  `world.toWorld(tx,ty)`
   gives the tile CENTER in world pixels (height-aware). `data/landmarks.ts` +
   `data/geography.ts` hold real coordinates; use `landmarkTile(id)`.
 - **FX** (`core/fx.ts`): call `rc.fx.*` with world-pixel coordinates (atmosphere implements).

@@ -14,16 +14,24 @@ export const HEIGHT_STEP = 4;
 export const MAX_HEIGHT = 4;
 
 /**
- * World grid size in tiles. Grid x grows toward geographic EAST, grid y grows
- * toward geographic SOUTH. In the isometric projection north therefore points
- * to the upper-right of the screen. ~62 m per tile.
+ * World grid size in tiles (~62 m per tile).
+ *
+ * ORIENTATION (changed 7 Oct): grid +tx points geographic SOUTH and grid +ty points
+ * geographic WEST. With the isometric projection this puts
+ *   north → screen up-left,  west (Thrace, the Ottoman camp) → screen DOWN-LEFT (toward
+ *   the viewer), south (Marmara) → screen down-right, east (city, Galata, Bosphorus) →
+ *   screen up-right.
+ * So the attackers stand in the foreground and the OUTER face of the land walls, the
+ * moat and the assaults face the camera. Never hard-code compass directions as tile
+ * deltas — use GEO_DIR from data/geography.ts.
  */
-export const MAP_W = 256;
-export const MAP_H = 200;
+export const MAP_W = 200; // tx extent = latitude span (north → south)
+export const MAP_H = 256; // ty extent = longitude span (east → west)
 
 /** Projection anchors (see data/geography.ts geoToTile). */
-export const GEO_LON0 = 28.885;
-export const GEO_LAT0 = 41.098;
+export const GEO_LON0 = 28.885; // western map edge (ty = MAP_H)
+export const GEO_LON1 = 28.885 + 256 / 1353; // eastern map edge (ty = 0) ≈ 29.0742
+export const GEO_LAT0 = 41.098; // northern map edge (tx = 0)
 export const TILES_PER_DEG_LON = 1353;
 export const TILES_PER_DEG_LAT = 1790;
 
