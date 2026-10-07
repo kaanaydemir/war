@@ -1,37 +1,44 @@
+/**
+ * SCREENS & MODALS (owner: ui-screens).
+ *
+ * LoadingScreen · TitleScreen · EndScreen and the Overlays layer (event cards,
+ * encyclopedia, settings, pause menu, toasts, transition curtain) rendered on
+ * top of every screen. Shared look primitives are documented in ui-kit.css.
+ */
+import './ui-kit.css';
+import './screens.css';
 import { useGame } from '../useGame';
+import { Encyclopedia } from './Encyclopedia';
+import { EventCard } from './EventCard';
+import { Curtain, Toasts, usePx } from './kit';
+import { MenuButton, PauseMenu } from './PauseMenu';
+import { SettingsModal } from './Settings';
+import { applyQaOnce } from './qa';
 
-/** STUBS (owner: ui-screens agent). */
-export function LoadingScreen() {
-  const p = Math.round(((window as any).__loadProgress ?? 0) * 100);
-  return <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', fontSize: 24 }}>Yükleniyor… {p}%</div>;
-}
+export { LoadingScreen } from './Loading';
+export { TitleScreen } from './Title';
+export { EndScreen } from './End';
+export { installUiKit } from './art';
+export { loadSettings } from './settings';
+export { transition, toast } from './kit';
+export { openPanel, closePanel } from './panels';
+export { openPauseMenu } from './PauseMenu';
 
-export function TitleScreen() {
-  const st = useGame();
-  return (
-    <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center' }}>
-      <div class="etkilesim" style={{ textAlign: 'center' }}>
-        <h1 style={{ fontSize: 48 }}>İstanbul'un Fethi — 1453</h1>
-        <button onClick={() => st.actions.newGame('normal')}>Yeni Oyun</button>
-      </div>
-    </div>
-  );
-}
-
-export function EndScreen() {
-  const st = useGame();
-  const o = st.state?.outcome;
-  return (
-    <div class="etkilesim" style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', background: '#0008' }}>
-      <div>
-        <h1>{o?.result === 'zafer' ? 'Zafer' : 'Yenilgi'}</h1>
-        <button onClick={() => st.actions.toTitle()}>Başlığa dön</button>
-      </div>
-    </div>
-  );
-}
-
-/** Modals/cards layered over every screen (event cards, encyclopedia…). */
+/** Modals/cards layered over every screen (event cards, encyclopedia, settings, pause menu…). */
 export function Overlays() {
-  return null;
+  const st = useGame();
+  const px = usePx();
+  const playing = st.ui.screen === 'oyun';
+  applyQaOnce();
+  return (
+    <>
+      {playing && <MenuButton />}
+      {playing && <EventCard />}
+      <PauseMenu />
+      <SettingsModal />
+      <Encyclopedia />
+      <Toasts px={px} />
+      <Curtain />
+    </>
+  );
 }

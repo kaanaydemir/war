@@ -43,6 +43,17 @@ export const FLAG = {
   gemilerKaradan: 'gemilerKaradan',
   /** navy: pontoon bridge over the Golden Horn (boolean). */
   halicKoprusu: 'halicKoprusu',
+  // ── navy (additions) ──
+  /** navy: fleet commander — 'baltaoglu' | 'hamza' (changes after 20 Nisan if the ships got through). */
+  donanmaKomutani: 'donanmaKomutani',
+  /** navy: 20 Nisan battle in progress (boolean). */
+  denizSavasiSuruyor: 'denizSavasiSuruyor',
+  /** navy: overland haul progress 0..1 (number), set while the operation runs. */
+  karadanIlerleme: 'karadanIlerleme',
+  /** navy: K8 Venetian fire raid result — 'onlendi' (warned via Galata) | 'basarili'. */
+  yakmaBaskini: 'yakmaBaskini',
+  /** navy: the large Venetian/papal relief fleet is in sight (boolean). */
+  hacliFilosu: 'hacliFilosu',
   /** siegeworks: at least one mine started (boolean). */
   lagimBasladi: 'lagimBasladi',
   /** siegeworks: siege tower built / burned (boolean). */
@@ -64,6 +75,12 @@ export const FLAG = {
   sancakDikildi: 'sancakDikildi',
   /** game: the city has fallen (boolean). */
   sehirDustu: 'sehirDustu',
+
+  // ── economy (additions) ──
+  /** economy: absolute day index when Rumeli Hisarı was completed (number). */
+  hisarBitisGunu: 'hisarBitisGunu',
+  /** economy: the Ottoman siege camp (otağ + tent fields) is pitched (boolean). */
+  ordugahKuruldu: 'ordugahKuruldu',
 } as const;
 
 export type FlagKey = (typeof FLAG)[keyof typeof FLAG];

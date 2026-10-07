@@ -55,12 +55,32 @@ export interface GameEvents {
   'naval:battle': { started: boolean };
   'overland:progress': { progress: number };
   'overland:done': {};
+  // ── navy (additions) ──
+  /** Boarding attempt: grapples thrown from shipId onto targetId. */
+  'ship:board': { shipId: number; targetId: number; at: { tx: number; ty: number }; success: boolean };
+  /** Shore battery shot at a ship (K8: Coco's galley). */
+  'navy:battery': { from: { tx: number; ty: number }; to: { tx: number; ty: number }; hit: boolean };
+  /** Golden Horn chain lowered (open) / raised. */
+  'navy:chain': { open: boolean };
+  /** A ship starts being hauled over the Pera ridge (K7). */
+  'overland:launch': { shipId: number };
+  /** A hauled ship slides into the Golden Horn at Kasımpaşa (K7). */
+  'overland:launched': { shipId: number; at: { tx: number; ty: number } };
 
   // economy / construction
   'building:placed': { id: number; type: string };
   'building:complete': { id: number; type: string; at: { tx: number; ty: number } };
   'construction:tick': { id: number; at: { tx: number; ty: number } };
   'caravan:arrived': { what: string };
+  // ── economy (additions) ──
+  /** A production building yielded a visible chunk of a resource (floating "+N"). */
+  'economy:produced': { id: number; res: import('./state').ResourceId; amount: number; at: { tx: number; ty: number } };
+  /** A construction stage finished (Rumeli Hisarı: temel, surlar, each tower). */
+  'construction:stage': { id: number; type: string; stage: string; name: string; at: { tx: number; ty: number } };
+  /** A caravan left Edirne (enters the map on the Edirne road). */
+  'caravan:departed': { id: number; kind: string };
+  /** The Ottoman siege camp was pitched (otağ + tent fields). */
+  'camp:established': { at: { tx: number; ty: number } };
 
   // events & narrative
   'event:fired': { eventId: string };

@@ -78,3 +78,30 @@ body.ui-gizli #ui {
   pointer-events: none;
   z-index: 5;
 }
+
+/*
+ * ── ui-screens additions ──
+ * Shared type scale in UI pixels (use with --px) and a few palette extras.
+ * Ornament images (frames, buttons, paper, seals…) are installed at runtime as
+ * --uk-* variables on <html>; see src/ui/screens/ui-kit.css for the list and
+ * the reusable primitives (.uk-panel-kagit, .uk-panel-gece, .uk-btn, .uk-ayrac…).
+ */
+:root {
+  --fs-kucuk: calc(6 * var(--px));
+  --fs-govde: calc(8 * var(--px));
+  --fs-baslik: calc(11 * var(--px));
+  --fs-dev: calc(16 * var(--px));
+  --paper-light: #f8efd8;
+  --lapis-light: #4a74b4;
+  --turquoise-light: #9ae3d0;
+  --fire: #f8902a;
+}
+
+button {
+  font-family: var(--font);
+}
+
+::selection {
+  background: var(--gold);
+  color: var(--ink);
+}

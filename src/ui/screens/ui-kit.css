@@ -1,0 +1,531 @@
+/*
+ * UI KIT — shared look primitives (owner: ui-screens; the HUD may reuse them).
+ *
+ * Everything is scaled by the UI pixel `--px` (2px ≤ ~1800×1000, 3px above).
+ * Ornament images are generated at runtime (src/ui/screens/art.ts) and
+ * installed on <html> as CSS variables by installUiKit():
+ *
+ *   --uk-cerceve-kagit  parchment frame 32×32, 9-slice 10   (.uk-panel-kagit)
+ *   --uk-cerceve-gece   night-lapis frame 32×32, 9-slice 10 (.uk-panel-gece)
+ *   --uk-btn / -hover / -basili / -pasif / -kirmizi   buttons 18×18, slice 5 (.uk-btn)
+ *   --uk-kagit  64×64 parchment tile   --uk-gece  48×48 night tile
+ *   --uk-ayrac (4×7 rule tile) + --uk-ayrac-orta (19×7 rosette)   (.uk-ayrac)
+ *   --uk-muhur 22×22 red wax seal   --uk-kapat 9×9 close X   --uk-isaret 8×9 pointer
+ *   --uk-bas-harf 24×24 drop-cap tile   --uk-kivilcim 42×7 sparkle strip (6 frames)
+ *   --uk-merdane-uc 12×10 scroll-roller end   --uk-merdane 4×10 roller rod
+ *   --uk-kose 28×28 page corner (tezhip)
+ *
+ * Primitives: .uk-panel-kagit .uk-panel-gece .uk-btn(.kirmizi .sade .odak)
+ * .uk-ayrac .uk-kapat .uk-kaydir (pixel scrollbars) .uk-kaydirici (range)
+ * .uk-anahtar (switch) .uk-secenekler (segmented) .uk-perde/.uk-modal (modal)
+ * .uk-tost (toast) .px-img/.px-strip (crisp sprites).
+ */
+
+.px-img,
+.px-strip > img {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  display: block;
+  max-width: none;
+}
+
+.px-strip {
+  display: inline-block;
+  position: relative;
+  overflow: hidden;
+  flex: none;
+}
+
+.px-strip > img {
+  animation-name: strip-oynat;
+  animation-iteration-count: infinite;
+  will-change: transform;
+}
+
+@keyframes strip-oynat {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(var(--strip-end));
+  }
+}
+
+/* ── panels ── */
+
+.uk-panel-kagit {
+  border: calc(10 * var(--px)) solid transparent;
+  border-image: var(--uk-cerceve-kagit) 10 / calc(10 * var(--px)) repeat;
+  background: var(--uk-kagit) repeat;
+  background-size: calc(64 * var(--px)) calc(64 * var(--px));
+  background-clip: padding-box;
+  image-rendering: pixelated;
+  color: var(--ink);
+}
+
+.uk-panel-gece {
+  border: calc(10 * var(--px)) solid transparent;
+  border-image: var(--uk-cerceve-gece) 10 / calc(10 * var(--px)) repeat;
+  background: var(--uk-gece) repeat;
+  background-size: calc(48 * var(--px)) calc(48 * var(--px));
+  background-clip: padding-box;
+  image-rendering: pixelated;
+  color: var(--paper);
+}
+
+/* ── text helpers ── */
+
+.num {
+  font-family: var(--font-num);
+  letter-spacing: 0;
+}
+
+.uk-altin {
+  color: var(--gold-light);
+  text-shadow:
+    0 var(--px) 0 var(--gold-dark),
+    0 calc(2 * var(--px)) 0 var(--ink);
+}
+
+/* ── buttons ── */
+
+.uk-btn {
+  font-family: var(--font);
+  font-size: calc(8 * var(--px));
+  line-height: 1;
+  color: var(--paper);
+  background: none;
+  border: calc(5 * var(--px)) solid transparent;
+  border-image: var(--uk-btn) 5 fill / calc(5 * var(--px)) repeat;
+  image-rendering: pixelated;
+  padding: calc(1 * var(--px)) calc(5 * var(--px));
+  min-height: calc(18 * var(--px));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: calc(3 * var(--px));
+  cursor: pointer;
+  text-shadow: 0 var(--px) 0 var(--ink);
+  white-space: nowrap;
+  position: relative;
+  transition: transform 60ms steps(2);
+}
+
+.uk-btn:hover:not(:disabled),
+.uk-btn.odak {
+  border-image-source: var(--uk-btn-hover);
+  color: var(--gold-light);
+}
+
+.uk-btn:active:not(:disabled) {
+  border-image-source: var(--uk-btn-basili);
+  transform: translateY(var(--px));
+}
+
+.uk-btn.kirmizi {
+  border-image-source: var(--uk-btn-kirmizi);
+  color: #fff1d0;
+}
+
+.uk-btn.kirmizi:hover:not(:disabled) {
+  filter: brightness(1.15);
+  color: #fff;
+}
+
+.uk-btn.sade {
+  border-image: none;
+  border-color: transparent;
+  color: inherit;
+  text-shadow: none;
+  text-decoration: underline;
+  text-decoration-thickness: var(--px);
+  text-underline-offset: calc(2 * var(--px));
+}
+
+.uk-btn:disabled {
+  border-image-source: var(--uk-btn-pasif);
+  color: #9b97a0;
+  cursor: not-allowed;
+}
+
+.uk-btn:focus-visible,
+.uk-geri:focus-visible,
+.menu-oge:focus-visible {
+  outline: var(--px) dashed var(--gold-light);
+  outline-offset: var(--px);
+}
+
+/* shine sweep on hover (stepped) */
+.uk-btn:not(.sade)::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(100deg, transparent 40%, rgba(255, 241, 160, 0.35) 45%, rgba(255, 241, 160, 0.35) 52%, transparent 57%);
+  background-size: 300% 100%;
+  background-position: 100% 0;
+  opacity: 0;
+}
+
+.uk-btn:hover:not(:disabled)::after {
+  opacity: 1;
+  animation: uk-parla 0.5s steps(8) 1;
+}
+
+@keyframes uk-parla {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0% 0;
+  }
+}
+
+/* ── divider (cetvel) ── */
+
+.uk-ayrac {
+  display: flex;
+  align-items: center;
+  height: calc(7 * var(--px));
+  margin: calc(4 * var(--px)) 0;
+}
+
+.uk-ayrac > span {
+  flex: 1;
+  height: 100%;
+  background: var(--uk-ayrac) repeat-x;
+  background-size: calc(4 * var(--px)) calc(7 * var(--px));
+  image-rendering: pixelated;
+}
+
+.uk-ayrac > i {
+  width: calc(19 * var(--px));
+  height: 100%;
+  background: var(--uk-ayrac-orta) no-repeat;
+  background-size: 100% 100%;
+  image-rendering: pixelated;
+}
+
+/* ── close button ── */
+
+.uk-kapat {
+  width: calc(13 * var(--px));
+  height: calc(13 * var(--px));
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  background: var(--uk-kapat) center no-repeat;
+  background-size: calc(9 * var(--px)) calc(9 * var(--px));
+  image-rendering: pixelated;
+  filter: drop-shadow(0 var(--px) 0 rgba(13, 11, 18, 0.6));
+  transition: transform 80ms steps(2);
+}
+
+.uk-kapat:hover {
+  transform: rotate(90deg);
+  filter: brightness(1.3) drop-shadow(0 var(--px) 0 rgba(13, 11, 18, 0.6));
+}
+
+.uk-geri {
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  transition: transform 80ms steps(2);
+}
+
+.uk-geri:hover {
+  transform: translateX(calc(-2 * var(--px)));
+}
+
+/* ── pixel scrollbars ── */
+
+.uk-kaydir {
+  overflow-y: auto;
+  scrollbar-color: var(--gold) rgba(13, 11, 18, 0.35);
+  scrollbar-width: thin;
+}
+
+.uk-kaydir::-webkit-scrollbar {
+  width: calc(4 * var(--px));
+}
+
+.uk-kaydir::-webkit-scrollbar-track {
+  background: rgba(13, 11, 18, 0.25);
+}
+
+.uk-kaydir::-webkit-scrollbar-thumb {
+  background: var(--gold);
+  border: var(--px) solid var(--gold-dark);
+}
+
+/* ── range slider ── */
+
+.uk-kaydirici {
+  display: flex;
+  align-items: center;
+}
+
+.uk-kaydirici input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: calc(8 * var(--px));
+  background:
+    linear-gradient(var(--gold), var(--gold)) 0 50% / var(--dolu, 50%) calc(2 * var(--px)) no-repeat,
+    linear-gradient(var(--gold-dark), var(--gold-dark)) 0 calc(50% + var(--px)) / var(--dolu, 50%) var(--px) no-repeat,
+    linear-gradient(var(--ink-soft), var(--ink-soft)) 0 50% / 100% calc(3 * var(--px)) no-repeat;
+  cursor: pointer;
+  margin: 0;
+}
+
+.uk-kaydirici input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: calc(6 * var(--px));
+  height: calc(8 * var(--px));
+  background: var(--uk-btn-hover) center / 100% 100%;
+  image-rendering: pixelated;
+  border: none;
+}
+
+.uk-kaydirici input[type='range']::-moz-range-thumb {
+  width: calc(6 * var(--px));
+  height: calc(8 * var(--px));
+  background: var(--gold);
+  border: var(--px) solid var(--ink);
+  border-radius: 0;
+}
+
+/* ── switch ── */
+
+.uk-anahtar {
+  width: calc(20 * var(--px));
+  height: calc(10 * var(--px));
+  padding: 0;
+  border: var(--px) solid var(--ink);
+  background: var(--ink-soft);
+  box-shadow: inset 0 var(--px) 0 rgba(0, 0, 0, 0.4);
+  position: relative;
+  cursor: pointer;
+}
+
+.uk-anahtar > i {
+  position: absolute;
+  top: var(--px);
+  left: var(--px);
+  width: calc(8 * var(--px));
+  height: calc(6 * var(--px));
+  background: var(--paper-dark);
+  box-shadow:
+    inset var(--px) var(--px) 0 #fff8e8,
+    inset calc(-1 * var(--px)) calc(-1 * var(--px)) 0 var(--paper-deep);
+  transition: left 90ms steps(3);
+}
+
+.uk-anahtar.acik {
+  background: var(--green);
+}
+
+.uk-anahtar.acik > i {
+  left: calc(10 * var(--px));
+  background: var(--gold-light);
+  box-shadow:
+    inset var(--px) var(--px) 0 #fff1a0,
+    inset calc(-1 * var(--px)) calc(-1 * var(--px)) 0 var(--gold-dark);
+}
+
+/* ── segmented choice ── */
+
+.uk-secenekler {
+  display: inline-flex;
+  border: var(--px) solid var(--ink);
+}
+
+.uk-secenekler > button {
+  font: inherit;
+  font-size: calc(7 * var(--px));
+  padding: calc(2 * var(--px)) calc(4 * var(--px));
+  border: none;
+  border-right: var(--px) solid var(--ink);
+  background: var(--paper-dark);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.uk-secenekler > button:last-child {
+  border-right: none;
+}
+
+.uk-secenekler > button.secili {
+  background: var(--lapis);
+  color: var(--gold-light);
+  box-shadow: inset 0 var(--px) 0 #4a74b4;
+}
+
+/* ── modal ── */
+
+.uk-perde {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  background: rgba(11, 15, 36, 0.62);
+  animation: uk-perde-ac 0.18s steps(4) both;
+  font-family: var(--font);
+}
+
+.uk-perde.kapaniyor {
+  animation: uk-perde-kapa 0.24s steps(4) both;
+}
+
+@keyframes uk-perde-ac {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes uk-perde-kapa {
+  to {
+    opacity: 0;
+  }
+}
+
+.uk-modal {
+  max-height: calc(100vh - 12 * var(--px));
+  display: flex;
+  flex-direction: column;
+  font-size: calc(8 * var(--px));
+  line-height: 1.35;
+  animation: uk-modal-ac 0.26s steps(6) both;
+  box-shadow: 0 calc(4 * var(--px)) 0 rgba(13, 11, 18, 0.45);
+}
+
+.uk-modal.kapaniyor {
+  animation: uk-modal-kapa 0.22s steps(5) both;
+}
+
+@keyframes uk-modal-ac {
+  from {
+    transform: translateY(calc(10 * var(--px))) scaleY(0.6);
+    opacity: 0;
+  }
+  60% {
+    transform: translateY(calc(-1 * var(--px))) scaleY(1.02);
+    opacity: 1;
+  }
+}
+
+@keyframes uk-modal-kapa {
+  to {
+    transform: translateY(calc(6 * var(--px))) scaleY(0.7);
+    opacity: 0;
+  }
+}
+
+.uk-modal-baslik {
+  display: flex;
+  align-items: center;
+  gap: calc(4 * var(--px));
+  margin: calc(-2 * var(--px)) 0 calc(3 * var(--px));
+  padding-bottom: calc(3 * var(--px));
+  border-bottom: var(--px) solid currentColor;
+  border-bottom-color: rgba(138, 92, 18, 0.55);
+}
+
+.uk-modal-baslik h2 {
+  flex: 1;
+  margin: 0;
+  font-size: calc(11 * var(--px));
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: calc(3 * var(--px));
+}
+
+.uk-panel-kagit .uk-modal-baslik h2 {
+  color: var(--red-dark);
+  text-shadow: 0 var(--px) 0 rgba(255, 248, 232, 0.8);
+}
+
+.uk-panel-gece .uk-modal-baslik h2 {
+  color: var(--gold-light);
+  text-shadow:
+    0 var(--px) 0 var(--gold-dark),
+    0 calc(2 * var(--px)) 0 var(--ink);
+}
+
+/* ── toasts ── */
+
+.uk-tostlar {
+  position: fixed;
+  left: 50%;
+  top: calc(36 * var(--px));
+  transform: translateX(-50%);
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  gap: calc(2 * var(--px));
+  pointer-events: none;
+  font-family: var(--font);
+}
+
+.uk-tost {
+  display: flex;
+  align-items: center;
+  gap: calc(3 * var(--px));
+  font-size: calc(8 * var(--px));
+  padding: calc(3 * var(--px)) calc(6 * var(--px));
+  color: var(--paper);
+  background: var(--lapis-dark);
+  border: var(--px) solid var(--ink);
+  box-shadow:
+    inset 0 0 0 var(--px) var(--gold),
+    0 calc(2 * var(--px)) 0 rgba(13, 11, 18, 0.5);
+  animation: uk-tost 2.6s steps(20) both;
+}
+
+.uk-tost > i {
+  width: calc(6 * var(--px));
+  height: calc(6 * var(--px));
+  background: var(--green);
+  box-shadow: inset var(--px) var(--px) 0 #4cb86e;
+}
+
+.uk-tost.uyari > i {
+  background: var(--red);
+  box-shadow: inset var(--px) var(--px) 0 #f26a5a;
+}
+
+.uk-tost.bilgi > i {
+  background: var(--turquoise);
+}
+
+@keyframes uk-tost {
+  0% {
+    opacity: 0;
+    transform: translateY(calc(-6 * var(--px)));
+  }
+  8%,
+  85% {
+    opacity: 1;
+    transform: none;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(calc(-3 * var(--px)));
+  }
+}
+
+/* reduced motion (setting or OS) */
+body.az-hareket .uk-modal,
+body.az-hareket .uk-perde {
+  animation-duration: 0.01s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .uk-modal,
+  .uk-perde {
+    animation-duration: 0.01s;
+  }
+}
