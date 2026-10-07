@@ -13,7 +13,7 @@ import { useEffect, useMemo, useState } from 'preact/hooks';
 import { useGame } from '../useGame';
 import { AltSol, useKisayollar } from './AltSol';
 import { artCssVars, cursorUrl, ICONS } from './art';
-import { announce, Bildirimler, DuyuruSeridi, useBusAboneligi } from './Bildirimler';
+import { announce, Bildirimler, DuyuruSeridi, useBusAboneligi, useDurumIzleyici } from './Bildirimler';
 import { EdirnePaneli } from './EdirnePaneli';
 import { Gorevler } from './Gorevler';
 import { Gostergeler } from './Gostergeler';
@@ -26,6 +26,7 @@ import { store } from '../../core/store';
 import type { PickKind } from '../../core/feature';
 import { UstSerit } from './UstSerit';
 import { uiScale } from './format';
+import { opt } from './opt';
 
 
 function useUiScale(): 2 | 3 {
@@ -41,6 +42,7 @@ function useUiScale(): 2 | 3 {
 /**
  * QA hooks for screenshots (no effect in normal play):
  *   ?hudpanel=insa|edirne · ?hudsec=group|cannon|building|ship|mine:first|<id> or section:<id>
+ *   ?hudsec=tower (siege tower) · ?hudyer=<building>:<tx>,<ty> (placement hint at a tile)
  *   ?hudsafak=1 (dawn report) · ?hudlog=1 (Günlük) · ?hudonay=1 (confirm dialog) · ?hudhedef=1 (target mode)
  */
 function useQaHooks(ready: boolean): void {
@@ -64,18 +66,33 @@ function useQaHooks(ready: boolean): void {
         };
         let id: number | string | undefined;
         if (kind === 'section') id = idRaw;
+        else if (kind === 'tower') {
+          const t = opt.towers(s)[0];
+          if (t) store.setUi({ selection: [{ kind: 'building', id: t.pickId, score: 0 }] });
+        }
         else if (idRaw === 'first' || !idRaw) id = list[kind]?.[0]?.id;
         else if (idRaw === 'all') {
           store.setUi({ selection: (list[kind] ?? []).slice(0, 8).map((e) => ({ kind: kind as PickKind, id: e.id, score: 0 })) });
-        } else id = Number(idRaw);
+        } else if (Number.isNaN(Number(idRaw))) id = s.buildings.find((b) => b.type === idRaw)?.id;
+        else id = Number(idRaw);
         if (id != null) store.setUi({ selection: [{ kind: kind as PickKind, id, score: 0 }] });
+      }
+      const yer = q.get('hudyer');
+      if (yer) {
+        const [b, at] = yer.split(':');
+        const [tx, ty] = (at ?? '').split(',').map(Number);
+        store.setUi({ placement: { building: b } });
+        if (Number.isFinite(tx) && Number.isFinite(ty)) store.ui.hoverTile = { tx, ty };
       }
       if (q.get('hudsafak') === '1') {
         setHud({ dawn: { resume: 1 } });
         store.setUi({ showDawnReport: true });
       }
       if (q.get('hudlog') === '1') setHud({ logOpen: true });
-      if (q.get('hudduyuru') === '1') announce('Kuşatma başladı', '6 Nisan 1453 · Gün 1');
+      const duy = q.get('hudduyuru');
+      if (duy === '1' || duy === 'kirmizi') announce('Kuşatma başladı', '6 Nisan 1453 · Gün 1');
+      else if (duy === 'altin') announce('Gemiler Haliç’te!', 'Donanma bir gecede Pera sırtlarını aştı', 'altin');
+      else if (duy === 'gece') announce('Deniz savaşı!', 'Dört yardım gemisi zincire doğru yol alıyor', 'gece');
       if (q.get('hudhedef') === '1') setHud({ target: { kind: 'emir', order: 'hucum', groupIds: [], label: 'Hücum edilecek sur kesimini seç' } });
       if (q.get('hudonay') === '1')
         askConfirm({ title: 'Son hücum ilan edilsin mi?', danger: true, ok: 'HÜCUM!', body: <p>Bu karar geri alınamaz.</p>, onOk: () => {} });
@@ -101,6 +118,7 @@ function Galeri() {
 export function Hud() {
   const st = useGame();
   useBusAboneligi();
+  useDurumIzleyici();
   useKisayollar();
   const px = useUiScale();
   const vars = useMemo(() => artCssVars(), []);

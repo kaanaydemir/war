@@ -78,6 +78,8 @@ interface GroupView {
   /** screen bounds for picking */
   b: { x0: number; y0: number; x1: number; y1: number };
   lastMen: number;
+  /** Half-width of the formation's footprint (screen px) for the selection ring. */
+  spread: number;
   floatAcc: number;
   floatT: number;
   moving: boolean;
@@ -171,7 +173,10 @@ export class ArmyRenderer {
         this.views.delete(id);
       }
     }
-    this.assault.update(state, dt, night, (id) => this.views.get(id)?.soldiers[0]?.key ?? null);
+    this.assault.update(state, dt, night, (id) => {
+      const s0 = this.views.get(id)?.soldiers.find((x) => x.layout === 'inf');
+      return s0 ? s0.key : null;
+    });
     for (const sp of this.assault.torchSpots()) torchSpots.push({ x: sp.x, y: sp.y, d: Math.hypot(sp.x - cam.x, sp.y - cam.y) * 0.7 });
     this.updateLights(torchSpots, night);
     this.updateSelection(state);
@@ -199,6 +204,7 @@ export class ArmyRenderer {
       dustT: Math.random(),
       b: { x0: 0, y0: 0, x1: 0, y1: 0 },
       lastMen: g.men,
+      spread: 10,
       floatAcc: 0,
       floatT: 0,
       moving: false,
@@ -444,6 +450,7 @@ export class ArmyRenderer {
         s.torch = null;
       }
     }
+    let bannerTop = Infinity;
     // banner bearer at the head / front of the formation
     const bannerKey = `army/sancak-${e.banner}`;
     let btx: number;
@@ -470,7 +477,7 @@ export class ArmyRenderer {
         .setDepth(Math.round(bw.y) + 0.002);
       v.bx = bw.x;
       v.by = bw.y;
-      minY = Math.min(minY, bw.y - BAN.h + 4);
+      bannerTop = Math.round(bw.y) - BAN.fy + 2;
     }
     // commander (and the Sultan's tuğs)
     if (g.commanderId) {
@@ -519,7 +526,8 @@ export class ArmyRenderer {
         this.rc.fx.dust(w.x, w.y, mounted ? 0.9 : 0.55);
       }
     }
-    v.b = { x0: minX - 8, y0: minY - 22, x1: maxX + 8, y1: maxY + 3 };
+    v.spread = Math.max(maxX - minX, (maxY - minY) * 2) / 2 + 6;
+    v.b = { x0: minX - 8, y0: Math.min(minY - 16, bannerTop), x1: maxX + 8, y1: maxY + 3 };
   }
 
   // ───────────────────────────── casualties ─────────────────────────────
@@ -531,7 +539,9 @@ export class ArmyRenderer {
     for (let k = 0; k < n; k++) {
       const s = v.soldiers[Math.floor(Math.random() * v.soldiers.length)];
       const w = this.wp(s.x, s.y);
-      this.assault.spawnDeath(s.key, s.layout, w.x + (Math.random() - 0.5) * 4, w.y, s.flip, s.back);
+      // mehter sheets have no death frames: a red-coated, turbaned infantry body stands in
+      const mehter = s.layout === 'meh' || s.layout === 'kos';
+      this.assault.spawnDeath(mehter ? 'army/sipahi-0' : s.key, mehter ? 'inf' : s.layout, w.x + (Math.random() - 0.5) * 4, w.y, s.flip, s.back);
     }
     v.floatAcc += count;
     if (this.time - v.floatT > 0.7) {
@@ -587,13 +597,13 @@ export class ArmyRenderer {
         this.sel.set(id, sv);
       }
       const c = this.wp(v.cx, v.cy);
-      const rpx = Math.max(v.b.x1 - v.b.x0, (v.b.y1 - v.b.y0) * 1.2) / 2;
+      const rpx = v.spread;
       const ri = rpx < 16 ? 0 : rpx < 24 ? 1 : rpx < 34 ? 2 : 3;
       sv.ring.setTexture(`army/halka-${ri}`, Math.floor(this.time * 4) % 3).setPosition(Math.round(c.x), Math.round(c.y));
       // bars
       const bw = 18;
       const bx = Math.round(v.bx - bw / 2);
-      const by = Math.round(v.b.y0 - 4);
+      const by = Math.round(v.b.y0 - 5);
       sv.barBg.setPosition(bx - 1, by - 1).setDisplaySize(bw + 2, 5);
       const menF = Math.max(0, Math.min(1, g.men / Math.max(1, g.maxMen)));
       sv.barMen.setPosition(bx, by).setDisplaySize(Math.max(1, Math.round(bw * menF)), 1).setTint(hex(menF > 0.5 ? P.green[5] : menF > 0.25 ? P.gold[5] : P.red[5]));

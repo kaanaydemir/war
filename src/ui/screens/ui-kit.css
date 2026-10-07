@@ -21,6 +21,28 @@
  * .uk-tost (toast) .px-img/.px-strip (crisp sprites).
  */
 
+/*
+ * "Fetih Rakam": Silkscreen digits only (U+0030–0039). Pixelify Sans draws 5
+ * like an S at UI sizes ("14S3"), so body text uses var(--font-metin) =
+ * Fetih Rakam → Pixelify Sans: digits come from Silkscreen, letters from
+ * Pixelify. The HUD may opt in by using var(--font-metin) as well.
+ */
+@font-face {
+  font-family: 'Fetih Rakam';
+  src: url('../../../node_modules/@fontsource/silkscreen/files/silkscreen-latin-400-normal.woff2') format('woff2');
+  font-weight: 400;
+  font-display: swap;
+  unicode-range: U+0030-0039;
+}
+
+@font-face {
+  font-family: 'Fetih Rakam';
+  src: url('../../../node_modules/@fontsource/silkscreen/files/silkscreen-latin-700-normal.woff2') format('woff2');
+  font-weight: 700;
+  font-display: swap;
+  unicode-range: U+0030-0039;
+}
+
 .px-img,
 .px-strip > img {
   image-rendering: pixelated;
@@ -90,7 +112,7 @@
 /* ── buttons ── */
 
 .uk-btn {
-  font-family: var(--font);
+  font-family: var(--font-metin);
   font-size: calc(8 * var(--px));
   line-height: 1;
   color: var(--paper);
@@ -372,7 +394,7 @@
   place-items: center;
   background: rgba(11, 15, 36, 0.62);
   animation: uk-perde-ac 0.18s steps(4) both;
-  font-family: var(--font);
+  font-family: var(--font-metin);
 }
 
 .uk-perde.kapaniyor {
@@ -467,7 +489,7 @@
   flex-direction: column;
   gap: calc(2 * var(--px));
   pointer-events: none;
-  font-family: var(--font);
+  font-family: var(--font-metin);
 }
 
 .uk-tost {

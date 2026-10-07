@@ -10,6 +10,7 @@ import type { CommanderDef } from '../../core/defs';
 import type { GameState, OrderType, SectionId, UnitGroup, UnitTypeId } from '../../core/state';
 import * as armyApi from '../../features/army/api';
 import * as byzApi from '../../features/byzantium/api';
+import * as swApi from '../../features/siegeworks/api';
 import { safe } from './logic';
 
 export interface RecruitOptionV {
@@ -76,8 +77,53 @@ type ByzOpt = Partial<{
   lastNightRepairs(s: GameState): { sectionId: SectionId; name: string; amount: number }[];
 }>;
 
+export interface TowerV {
+  id: number;
+  pickId: number;
+  sectionId: SectionId;
+  status: string;
+  statusText: string;
+  progress: number;
+  approach: number;
+  burn: number;
+  blocked: string | null;
+  moatNeed: number;
+  at?: { tx: number; ty: number };
+}
+
+export interface MineV {
+  id: number;
+  sectionId: SectionId;
+  status: string;
+  statusText: string;
+  progress: number;
+  detected: boolean;
+  counter: number | null;
+  fateText: string | null;
+  canFire: boolean;
+}
+
+export interface MoatV {
+  fill: number;
+  men: number;
+  amele: number;
+  ameleMax: number;
+  hasMoat: boolean;
+}
+
+type SwOpt = Partial<{
+  siegeTowers(s: GameState): TowerV[];
+  towerView(s: GameState, id: number): TowerV | null;
+  mineView(s: GameState, id: number): MineV | null;
+  canDigMine(s: GameState, id: SectionId, groupId: number): string | null;
+  canBuildTower(s: GameState, id: SectionId): string | null;
+  moatWork(s: GameState, id: SectionId): MoatV | null;
+  TOWER_COST: Cost;
+}>;
+
 const A = armyApi as unknown as ArmyOpt;
 const B = byzApi as unknown as ByzOpt;
+const SW = swApi as unknown as SwOpt;
 
 export const opt = {
   recruitOptions: (s: GameState) => safe(() => A.recruitOptions?.(s) ?? null, null),
@@ -89,4 +135,12 @@ export const opt = {
   assaultAt: (s: GameState, id: SectionId) => safe(() => A.assaultAt?.(s, id) ?? null, null),
   trakya: (s: GameState) => safe(() => A.trakyaStatus?.(s) ?? null, null),
   sectionDefenseText: (s: GameState, id: SectionId) => safe(() => B.sectionDefenseText?.(s, id) ?? null, null),
+  // siegeworks (towers, mines, moat crews)
+  towers: (s: GameState) => safe(() => SW.siegeTowers?.(s) ?? [], [] as TowerV[]),
+  tower: (s: GameState, id: number) => safe(() => SW.towerView?.(s, id) ?? null, null),
+  mine: (s: GameState, id: number) => safe(() => SW.mineView?.(s, id) ?? null, null),
+  canDigMine: (s: GameState, id: SectionId, groupId: number) => safe(() => SW.canDigMine?.(s, id, groupId) ?? null, null),
+  canBuildTower: (s: GameState, id: SectionId) => safe(() => SW.canBuildTower?.(s, id) ?? null, null),
+  moatWork: (s: GameState, id: SectionId) => safe(() => SW.moatWork?.(s, id) ?? null, null),
+  towerCost: (): Cost => safe(() => SW.TOWER_COST ?? { kereste: 400, akce: 2000 }, { kereste: 400, akce: 2000 }),
 };

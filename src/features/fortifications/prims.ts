@@ -267,14 +267,26 @@ export function topColor(m: MatId, I: number, tx: number, ty: number, x: number,
 
 /** Rubble: blocks, brick chunks, dust. */
 export function rubbleColor(I: number, a: number, b: number, x: number, y: number): number {
-  const cu = Math.floor(a / 2.2);
-  const cv = Math.floor(b / 1.8);
-  const r = h3(cu, cv, 91);
-  const edge = frac(a / 2.2) < 0.3 || frac(b / 1.8) < 0.3;
-  let idx = 0.3 + I * 3.7 + (r - 0.5) * 1.1 - (edge ? 0.8 : 0);
-  if (r < 0.16) return pick(RAMP.brick, idx + 0.3, x, y);
-  if (r > 0.8) return pick(RAMP.dirt, idx + 0.9, x, y);
-  return pick(RAMP.stone, idx + 0.8, x, y);
+  // tumbled masonry: staggered chunks (≈4×3 px) with a lit upper-left lip and a dark
+  // lower-right joint — flat colour inside each chunk so the heap reads as blocks, not noise
+  const BW = 4.2;
+  const BH = 3.1;
+  const row = Math.floor(b / BH);
+  const sh = h3(row, 5, 93) * BW;
+  const col = Math.floor((a + sh) / BW);
+  const r = h3(col, row, 91);
+  const fu = frac((a + sh) / BW);
+  const fv = frac(b / BH);
+  const joint = fu > 0.84 || fv > 0.76;
+  const lip = !joint && fv < 0.26;
+  const dust = h3(col, row, 92) < 0.12; // gaps filled with earth & mortar dust
+  const idx = Math.round(0.4 + I * 3.2 + (r - 0.5) * 0.9);
+  if (joint) return pick(RAMP.stone, idx + 0.2, x, y, 0);
+  if (dust) return pick(RAMP.dirt, idx + 1.6, x, y, 0);
+  const l = lip ? 1 : 0;
+  if (r < 0.17) return pick(RAMP.brick, idx + 1 + l, x, y, 0);
+  if (r < 0.6) return pick(RAMP.lime, idx - 0.4 + l, x, y, 0);
+  return pick(RAMP.stone, idx + 1.6 + l, x, y, 0);
 }
 
 // ───────────────────────────── shared lighting helpers ─────────────────────────────
@@ -561,9 +573,10 @@ export class Box implements Prim {
     const [a, b] = this.local(tx, ty);
     if (Math.abs(a) > o.ha || Math.abs(b) > o.hb) return NONE;
     if (o.ruin != null) {
-      const n = h3(Math.floor(a * 9), Math.floor(b * 9), o.seed ?? 5);
+      const n = h3(Math.floor(a * 4.5), Math.floor(b * 4.5), o.seed ?? 5);
       const edge = Math.min(o.ha - Math.abs(a), o.hb - Math.abs(b));
-      return o.base + o.height * o.ruin + (n - 0.5) * 5 + (edge < 0.08 ? 2 + n * 4 : 0);
+      // the hollow shell stands a little higher than the rubble core, in coarse steps
+      return o.base + Math.round(o.height * o.ruin + (n - 0.5) * 4 + (edge < 0.09 ? 1 + n * 3 : 0));
     }
     return o.base + o.height + this.roofZ(a, b);
   }
@@ -757,8 +770,8 @@ export class Cyl implements Prim {
     if (o.clip && dx * o.clip.nx + dy * o.clip.ny < 0) return NONE;
     const d = Math.sqrt(d2) / o.r;
     if (o.ruin != null) {
-      const n = h3(Math.floor(tx * 9), Math.floor(ty * 9), o.seed ?? 5);
-      return o.base + o.height * o.ruin + (n - 0.5) * 5 + (d > 0.8 ? 3 + n * 3 : 0);
+      const n = h3(Math.floor(tx * 4.5), Math.floor(ty * 4.5), o.seed ?? 5);
+      return o.base + Math.round(o.height * o.ruin + (n - 0.5) * 4 + (d > 0.8 ? 1 + n * 3 : 0));
     }
     const rise = o.rise ?? 0;
     switch (o.top) {
@@ -899,8 +912,8 @@ export class Poly implements Prim {
     const [f] = this.face(dx, dy);
     if (f > 1) return NONE;
     if (o.ruin != null) {
-      const n = h3(Math.floor(tx * 9), Math.floor(ty * 9), o.seed ?? 5);
-      return o.base + o.height * o.ruin + (n - 0.5) * 5 + (f > 0.8 ? 3 + n * 3 : 0);
+      const n = h3(Math.floor(tx * 4.5), Math.floor(ty * 4.5), o.seed ?? 5);
+      return o.base + Math.round(o.height * o.ruin + (n - 0.5) * 4 + (f > 0.8 ? 1 + n * 3 : 0));
     }
     if (o.top === 'pyramid') return o.base + o.height + (o.rise ?? 0) * (1 - f);
     if (o.top === 'merlon' && f > 0.84) {
@@ -992,7 +1005,12 @@ export class Mound implements Prim {
 
   private bump(tx: number, ty: number): number {
     const s = this.o.seed;
-    return (h3(Math.floor(tx * 10), Math.floor(ty * 10), s) - 0.5) * 1.3 + (h3(Math.floor(tx * 4), Math.floor(ty * 4), s + 1) - 0.5) * 1.2;
+    return (h3(Math.floor(tx * 7), Math.floor(ty * 7), s) - 0.5) * 1.1 + (h3(Math.floor(tx * 3), Math.floor(ty * 3), s + 1) - 0.5) * 1.3;
+  }
+
+  private smoothH(tx: number, ty: number): number {
+    const d = Math.min(1, this.dist(tx, ty));
+    return this.o.height * Math.pow(1 - d * d, 0.8);
   }
 
   h(tx: number, ty: number): number {
@@ -1005,10 +1023,10 @@ export class Mound implements Prim {
   }
 
   shade(p: ShadeIn): number {
-    // numeric normal of the smooth part
+    // normal of the smooth heap (the bumps only break the silhouette)
     const e = 0.06;
-    const hx = (this.h(p.tx + e, p.ty) - this.h(p.tx - e, p.ty)) / (2 * e * HPX);
-    const hy = (this.h(p.tx, p.ty + e) - this.h(p.tx, p.ty - e)) / (2 * e * HPX);
+    const hx = (this.smoothH(p.tx + e, p.ty) - this.smoothH(p.tx - e, p.ty)) / (2 * e * HPX);
+    const hy = (this.smoothH(p.tx, p.ty + e) - this.smoothH(p.tx, p.ty - e)) / (2 * e * HPX);
     const ok = isFinite(hx) && isFinite(hy) && Math.abs(hx) < 50 && Math.abs(hy) < 50;
     const [nx, ny, nz] = ok ? nrm(-hx, -hy, 1) : [0, 0, 1];
     const I = lightI(nx, ny, nz, p.sh);

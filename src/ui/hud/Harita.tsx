@@ -14,6 +14,7 @@ import { sectionPath } from '../../features/fortifications/api';
 import { minimapCanvas } from '../../features/world/minimap';
 import { getWorld } from '../../game/GameScene';
 import { breachColor, safe, SIDE_COLOR, viewQuad } from './logic';
+import { opt } from './opt';
 import { Ikon, Ipucu, ses } from './ui';
 
 function worldOrNull(): WorldApi | null {
@@ -75,6 +76,16 @@ function draw(cv: HTMLCanvasElement, t: number): void {
     ctx.fillRect(Math.floor(b.tx * S), Math.floor(b.ty * S), sz[0] * S, sz[1] * S);
   }
   const selected = new Set(store.ui.selection.map((p) => `${p.kind}:${p.id}`));
+  // mines (shaft entrances) and siege towers
+  for (const m of s.mines) {
+    if (m.status === 'cokertildi') continue;
+    dot(m.tx, m.ty, m.detected && blink ? '#f26a5a' : '#916645', 2);
+  }
+  for (const t of opt.towers(s)) {
+    if (!t.at || t.status === 'yikildi') continue;
+    const sel = selected.has(`building:${t.pickId}`);
+    dot(t.at.tx, t.at.ty, sel && blink ? '#ffffff' : t.status === 'yaniyor' && blink ? '#f8902a' : '#c8a46a', 3);
+  }
   // ships
   for (const sh of s.ships) {
     if (sh.status === 'batik' || sh.hp <= 0) continue;
@@ -187,6 +198,8 @@ export function Harita() {
                 <i style={{ background: '#b81f2c' }} /> Osmanlı birlikleri
                 <i style={{ background: '#f2d65a' }} /> Toplar
                 <i style={{ background: '#e6cb92' }} /> Yapılar
+                <i style={{ background: '#c8a46a' }} /> Kuşatma kulesi
+                <i style={{ background: '#916645' }} /> Lağımlar
                 <i style={{ background: '#fbf8f0' }} /> Ceneviz gemileri
                 <i style={{ background: '#b67cc8' }} /> Bizans gemileri
                 <i style={{ background: '#f26a5a' }} /> Gedik açılmış sur

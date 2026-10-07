@@ -7,6 +7,7 @@ import { formatDate } from '../../core/calendar';
 import type { GameState } from '../../core/state';
 import { store } from '../../core/store';
 import { erzakDays } from '../../features/economy/api';
+import { blockadeStrength } from '../../features/navy/api';
 import { defenderRange, divanLabel, erzakLevel, fmtDateRange, fmtDays, fmtInt, galataLabel, moraleLabel, reliefTension } from './format';
 import { safe } from './logic';
 import { Cubuk, Ikon, Ipucu, Sayi } from './ui';
@@ -124,6 +125,7 @@ function Galata({ s }: { s: GameState }) {
 function Bizans({ s }: { s: GameState }) {
   const est = s.byz.estimatedDefenders || 0;
   const [lo, hi] = defenderRange(est, s.byz.intel);
+  const blokaj = s.time.phase === 'kusatma' ? safe(() => blockadeStrength(s), null) : null;
   return (
     <Cip
       ikon="bizans"
@@ -137,6 +139,18 @@ function Bizans({ s }: { s: GameState }) {
           <div class="ipucu-tablo">
             <span>Casus bilgisi</span>
             <b class="num">%{Math.round(s.byz.intel)}</b>
+            {blokaj != null && (
+              <>
+                <span>Deniz ablukası</span>
+                <b class="num">%{Math.round(blokaj * 100)}</b>
+              </>
+            )}
+            {s.byz.intel >= 40 && Number.isFinite(s.byz.food) && (
+              <>
+                <span>Şehrin zahiresi (tahmini)</span>
+                <b class="num">≈{fmtDays(s.byz.food)} gün</b>
+              </>
+            )}
           </div>
           <div class="ipucu-metin soluk">Casuslar, kaçaklar ve Galata haberleri tahmini netleştirir. Sphrantzes’e göre şehirde ≈7.000 savunucu vardı.</div>
         </div>

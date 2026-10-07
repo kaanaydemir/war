@@ -8,8 +8,10 @@ import { RESOURCE_ADI, RESOURCE_IDS, type GameState, type ResourceId } from '../
 import { store } from '../../core/store';
 import { dailyAmmoUse } from '../../features/artillery/api';
 import { erzakDays, ledger, productionPerDay, upkeepPerDay } from '../../features/economy/api';
+import { currentWeather } from '../../features/atmosphere/api';
 import { skyState } from '../../features/events/api';
-import { erzakLevel, fmtCompact, fmtDays, fmtDelta, fmtInt } from './format';
+import { windNow } from '../../features/navy/api';
+import { erzakLevel, fmtCompact, fmtDays, fmtDelta, fmtInt, windName } from './format';
 import { safe } from './logic';
 import { Btn, Ikon, Ipucu, Sayi } from './ui';
 
@@ -135,6 +137,38 @@ function HizKontrol({ s }: { s: GameState }) {
   );
 }
 
+const HAVA_ADI: Record<string, { ad: string; metin: string }> = {
+  yagmur: { ad: 'Yağmur', metin: 'Islak barut geç tutuşur; kervanlar ve toplar çamurda ağır ilerler.' },
+  dolu: { ad: 'Dolu fırtınası', metin: 'Kaynaklar 24 Mayıs’ta şehre inen şiddetli dolu ve sağanaktan söz eder; Rumlar bunu kötü alamet saydı.' },
+  sis: { ad: 'Yoğun sis', metin: '25 Mayıs sabahı şehri yoğun bir sis kapladı. Görüş kısa, topçular nişan alamaz.' },
+  kar: { ad: 'Kar', metin: 'Kış: yollar zor, işler yavaş. Toplar Edirne’den bu mevsimde güçlükle taşınır.' },
+};
+
+function Hava({ s }: { s: GameState }) {
+  const w = safe(() => currentWeather(s), { kind: 'acik' as const, intensity: 0 });
+  if (!w || w.kind === 'acik' || w.intensity < 0.05) return null;
+  const h = HAVA_ADI[w.kind];
+  if (!h) return null;
+  const wind = safe(() => windNow(s), null);
+  return (
+    <Ipucu
+      icerik={
+        <div class="ipucu-icerik genis">
+          <div class="ipucu-baslik">
+            <Ikon ad={`hava-${w.kind}`} /> {h.ad}
+          </div>
+          <div class="ipucu-metin">{h.metin}</div>
+          {wind && wind.strength > 0.05 && <div class="ipucu-metin soluk">Rüzgâr: {windName(wind.dir)}</div>}
+        </div>
+      }
+    >
+      <span class={`hava-rozet hava-${w.kind}`}>
+        <Ikon ad={`hava-${w.kind}`} />
+      </span>
+    </Ipucu>
+  );
+}
+
 function Takvim({ s }: { s: GameState }) {
   const seg = segmentOf(s.time.day);
   const eclipse = seg === 'gece' && safe(() => skyState(s).eclipse, false);
@@ -169,6 +203,7 @@ function Takvim({ s }: { s: GameState }) {
           <span class="num">{formatClock(s.time.day)}</span>
           <span class="nokta">·</span>
           <span>{SEGMENT_ADI[seg]}</span>
+          <Hava s={s} />
         </div>
       </div>
       {gun != null && ph !== 'hazirlik' && ph !== 'yuruyus' ? (

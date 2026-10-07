@@ -128,7 +128,11 @@ export function lessonsFor(state: GameState | null, limit = 4): string[] {
     out.push('Erzak kafilelerini korumak ve Gelibolu’dan deniz yoluyla erzak getirmek ordunun dayanma süresini uzatırdı.');
   }
   if (!f[FLAG.sonHucumIlan] && (state.stats?.breaches ?? 0) > 0) out.push('Gedik açıldıktan sonra son hücumu erken ilan etmek, yardım yetişmeden sonucu belirlerdi.');
-  if (!out.length) out.push('Kuşatmanın her günü önemliydi: daha hızlı hazırlık, yardımın yetişmesine fırsat bırakmazdı.');
+  // general advice, so the list never feels thin
+  if (!f[FLAG.hisarTamam]) out.push('Rumeli Hisarı’nı erken bitirmek Boğaz’ı keser, Karadeniz’den şehre gelecek erzak ve yardımı durdururdu.');
+  if (!f[FLAG.lagimBasladi]) out.push('Lağımcıları surların altına göndermek, savunmayı toplar susunca bile tedirgin ederdi.');
+  if ((state.stats?.assaults ?? 0) === 0 && kind === 'yenilgi-hacli') out.push('Ara hücumlarla savunanları yıpratmak, zaten az olan Bizans askerini her gün biraz daha azaltırdı.');
+  out.push('Kuşatmanın her günü önemliydi: daha hızlı hazırlık, yardımın yetişmesine fırsat bırakmazdı.');
   return out.slice(0, limit);
 }
 

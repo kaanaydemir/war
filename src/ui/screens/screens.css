@@ -3,11 +3,18 @@
  * Units: always multiples of the UI pixel --px.
  */
 
+/* buttons inside the screens use the body text face (digits from Silkscreen) */
+.ekran button,
+.uk-perde button,
+.olay-katman button {
+  font-family: inherit;
+}
+
 .ekran {
   position: absolute;
   inset: 0;
   overflow: hidden;
-  font-family: var(--font);
+  font-family: var(--font-metin);
   font-size: calc(8 * var(--px));
   line-height: 1.35;
 }
@@ -279,7 +286,7 @@
 }
 
 .baslik-alt-yazi {
-  color: var(--paper-dark);
+  color: var(--paper-light);
   font-size: calc(7 * var(--px));
   letter-spacing: calc(0.5 * var(--px));
   text-shadow:
@@ -313,10 +320,49 @@
   flex-direction: column;
   gap: calc(1 * var(--px));
   width: calc(176 * var(--px));
+  position: relative;
+  isolation: isolate;
+  padding: calc(5 * var(--px)) 0;
+}
+
+/* stepped (pixel) ink band behind the menu, framed by fading gold rules */
+.baslik-menu::before,
+.baslik-menu::after {
+  content: '';
+  position: absolute;
+  left: calc(-40 * var(--px));
+  right: calc(-40 * var(--px));
+  pointer-events: none;
+}
+
+.baslik-menu::before {
+  top: 0;
+  bottom: 0;
+  z-index: -1;
+  background: linear-gradient(
+    90deg,
+    transparent 0 4%,
+    rgba(11, 15, 36, 0.3) 4% 10%,
+    rgba(11, 15, 36, 0.55) 10% 18%,
+    rgba(11, 15, 36, 0.7) 18% 82%,
+    rgba(11, 15, 36, 0.55) 82% 90%,
+    rgba(11, 15, 36, 0.3) 90% 96%,
+    transparent 96%
+  );
+  animation: ekran-gir 0.8s 0.3s steps(6) both;
+}
+
+.baslik-menu::after {
+  top: 0;
+  bottom: 0;
+  border-top: var(--px) solid transparent;
+  border-bottom: var(--px) solid transparent;
+  border-image: linear-gradient(90deg, transparent 0 8%, var(--gold-dark) 8% 20%, var(--gold) 20% 80%, var(--gold-dark) 80% 92%, transparent 92%) 1;
+  animation: ekran-gir 0.8s 0.3s steps(6) both;
 }
 
 .menu-oge {
-  font-family: var(--font);
+  font-family: var(--font-metin);
   font-size: calc(9 * var(--px));
   display: flex;
   align-items: center;
@@ -394,7 +440,7 @@
 }
 
 .menu-oge:disabled {
-  color: #8a8590;
+  color: #9a94a2;
   cursor: not-allowed;
 }
 
@@ -419,7 +465,7 @@
   animation: uk-modal-ac 0.3s steps(6) both;
 }
 
-.alt-baslik {
+.altsayfa-baslik {
   display: flex;
   align-items: center;
   gap: calc(4 * var(--px));
@@ -428,7 +474,7 @@
   margin-bottom: calc(3 * var(--px));
 }
 
-.alt-baslik h2 {
+.altsayfa-baslik h2 {
   margin: 0;
   font-size: calc(11 * var(--px));
   color: var(--gold-light);
@@ -458,7 +504,7 @@
 }
 
 .zorluk-kart {
-  font-family: var(--font);
+  font-family: var(--font-metin);
   font-size: calc(7 * var(--px));
   display: flex;
   flex-direction: column;
@@ -559,7 +605,7 @@
 }
 
 .sahne-liste button {
-  font-family: var(--font);
+  font-family: var(--font-metin);
   font-size: calc(7 * var(--px));
   width: 100%;
   display: flex;
@@ -622,7 +668,7 @@
 }
 
 /* sources */
-.kaynaklar {
+.kaynak-sayfa {
   width: min(calc(440 * var(--px)), calc(100vw - 12 * var(--px)));
 }
 
@@ -744,7 +790,7 @@
   inset: 0;
   z-index: 40;
   pointer-events: none;
-  font-family: var(--font);
+  font-family: var(--font-metin);
   font-size: calc(8 * var(--px));
   line-height: 1.35;
   display: grid;
@@ -1033,6 +1079,21 @@
   margin: 0;
 }
 
+/* information cards: text beside the miniature, opened with a red initial */
+.olay-metin.sagda {
+  padding-top: calc(3 * var(--px));
+}
+
+.olay-metin.sagda::first-letter {
+  float: left;
+  font-family: 'Silkscreen', var(--font);
+  font-size: calc(16 * var(--px));
+  line-height: 1;
+  margin: calc(1 * var(--px)) calc(3 * var(--px)) 0 0;
+  color: var(--red);
+  text-shadow: var(--px) var(--px) 0 var(--gold);
+}
+
 .olay-sag {
   flex: 1;
   min-width: 0;
@@ -1056,7 +1117,7 @@
 }
 
 .olay-cip b {
-  font-size: calc(5 * var(--px));
+  font-size: inherit;
 }
 
 .olay-cip.iyi {
@@ -1078,7 +1139,7 @@
 }
 
 .olay-secim {
-  font-family: var(--font);
+  font-family: var(--font-metin);
   font-size: calc(8 * var(--px));
   position: relative;
   display: flex;
@@ -1199,7 +1260,7 @@
 }
 
 .tarihte-dugme {
-  font-family: var(--font);
+  font-family: var(--font-metin);
   font-size: calc(8 * var(--px));
   display: flex;
   align-items: center;
@@ -1250,7 +1311,7 @@
 }
 
 .olay-bag {
-  font-family: var(--font);
+  font-family: var(--font-metin);
   font-size: calc(6 * var(--px));
   padding: calc(1 * var(--px)) calc(3 * var(--px));
   color: var(--lapis);
@@ -1275,7 +1336,7 @@
   color: var(--gold-light);
 }
 
-.olay-bag.harita::before {
+.olay-bag.olay-bag-harita::before {
   background: var(--red);
   transform: none;
   border-radius: 50%;
@@ -1356,7 +1417,7 @@
 .ans-ara input {
   flex: 1;
   min-width: 0;
-  font-family: var(--font);
+  font-family: var(--font-metin);
   font-size: calc(7 * var(--px));
   border: none;
   outline: none;
@@ -1372,7 +1433,7 @@
 }
 
 .ans-sekmeler button {
-  font-family: var(--font);
+  font-family: var(--font-metin);
   font-size: calc(6 * var(--px));
   display: flex;
   flex-direction: column;
@@ -1412,7 +1473,7 @@
 }
 
 .ans-liste button {
-  font-family: var(--font);
+  font-family: var(--font-metin);
   font-size: calc(7 * var(--px));
   width: 100%;
   display: flex;
@@ -1465,7 +1526,7 @@
 }
 
 .ans-geri {
-  font-family: var(--font);
+  font-family: var(--font-metin);
   font-size: calc(6 * var(--px));
   display: inline-flex;
   align-items: center;
@@ -1532,8 +1593,10 @@
   place-items: center;
   background: var(--uk-bas-harf) center / 100% 100% no-repeat;
   image-rendering: pixelated;
+  /* Silkscreen capitals read unambiguously at 4× (Pixelify's B looks like a G) */
+  font-family: 'Silkscreen', var(--font);
   font-size: calc(16 * var(--px));
-  font-weight: 700;
+  font-weight: 400;
   line-height: 1;
   color: var(--gold-light);
   text-shadow:
@@ -1616,7 +1679,7 @@
 }
 
 .ans-giris-kartlar button {
-  font-family: var(--font);
+  font-family: var(--font-metin);
   font-size: calc(7 * var(--px));
   display: flex;
   align-items: center;
@@ -1923,7 +1986,7 @@
   filter: saturate(0.55) brightness(0.92);
 }
 
-.son-kagit .kose {
+.son-kagit .son-kose {
   position: absolute;
   width: calc(28 * var(--px));
   height: calc(28 * var(--px));
@@ -2044,23 +2107,35 @@
 
 .son-satir {
   margin: 0;
-  clip-path: inset(0 100% 0 0);
+}
+
+.son-satir .kelime {
   opacity: 0;
 }
 
-.son-satir.yaziliyor {
-  animation: murekkep 1.3s steps(18) forwards;
+.son-satir.yaziliyor .kelime {
+  animation: kelime-yaz 0.42s steps(4) both;
 }
 
-@keyframes murekkep {
+/* each word bleeds in like fresh ink: faint and low, then dark and settled */
+@keyframes kelime-yaz {
   0% {
-    clip-path: inset(0 100% 0 0);
-    opacity: 0.2;
+    opacity: 0;
+    color: var(--gold-dark);
+    top: calc(2 * var(--px));
+  }
+  60% {
+    opacity: 1;
+    color: var(--red-dark);
   }
   100% {
-    clip-path: inset(0 0 0 0);
     opacity: 1;
+    top: 0;
   }
+}
+
+.son-satir .kelime {
+  position: relative;
 }
 
 .son-tarihte {

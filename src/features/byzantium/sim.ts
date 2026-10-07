@@ -681,8 +681,9 @@ function doSortie(state: GameState, ctx: SimContext, p: ByzPriv): void {
           applyDefenderLosses(state, ctx.bus, id, rng.int(3, 12));
           p.lastSortie = { sectionId: id, day: state.time.day, tx: at.tx, ty: at.ty, kind: 'kule' };
           p.sortiesTonight++;
-          log(state, 'kayip', `Gece baskını! Rumlar ${state.sections[id].name} önündeki kuşatma kulesini Rum ateşiyle tutuşturdu.`);
-          notify(ctx.bus, 'Gece baskını: kuşatma kulesi yanıyor!', 'tehlike');
+          // the K12 card (when present) announces the burning tower itself: one toast only
+          const card = eventsHandle('k12-kule-yandi');
+          log(state, 'kayip', `Gece baskını! Rumlar ${state.sections[id].name} önündeki kuşatma kulesini Rum ateşiyle tutuşturdu.`, card ? undefined : ctx.bus);
           return;
         }
       }
@@ -797,10 +798,9 @@ export function woundGiustiniani(state: GameState, ctx: SimContext, p: ByzPriv):
   if (!eventsHandle('k19-giustiniani')) addByzMorale(state, -15);
   addDivan(state, 10);
   log(state, 'basari', `Giustiniani ağır yaralandı ve gemisine taşındı! Ardından ≈${Math.round(left / 50) * 50} Cenevizli surları bırakıyor; Mesoteikhion’da savunma çözülüyor.`);
-  notify(ctx.bus, 'Giustiniani yaralandı! Lykos’ta savunma çözülüyor.', 'basari');
-  const at = approachOf('kara-lykos');
+  // the K19 card (when present) announces it; otherwise one toast from here
+  if (!eventsHandle('k19-giustiniani')) notify(ctx.bus, 'Giustiniani yaralandı! Lykos’ta savunma çözülüyor.', 'basari');
   ctx.bus.emit('camera:shake', { intensity: 0.25, duration: 0.6 });
-  void at;
 }
 
 function emperorFate(state: GameState, ctx: SimContext, p: ByzPriv): void {

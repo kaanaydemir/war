@@ -403,6 +403,11 @@ export function piecePrims(p: PieceDef, dmg: PieceDamage, fallen: boolean): Prim
       const a = offsetAt(line, gc.t, band.n0 - (p.layer === 'dis' ? 0.25 : 0.45));
       const b = offsetAt(line, gc.t, band.n1 + (p.layer === 'dis' ? 0.4 : 0.3));
       out.push(new Mound({ ax: a.tx, ay: a.ty, bx: b.tx, by: b.ty, r: Math.min(0.5, gc.w * 1.15), base: p.base, height: band.H * 0.3, owner: p.idx, seed: seed + 5, kind: 'moloz' }));
+      // a long low bank of fallen masonry along the foot of the breach (joins neighbouring gaps)
+      const nm = (band.n0 + band.n1) / 2 + 0.12;
+      const c0 = offsetAt(line, Math.max(p.t0, gc.t - gc.w * 1.4), nm);
+      const c1 = offsetAt(line, Math.min(p.t1, gc.t + gc.w * 1.4), nm);
+      out.push(new Mound({ ax: c0.tx, ay: c0.ty, bx: c1.tx, by: c1.ty, r: 0.34, base: p.base, height: band.H * 0.18, owner: p.idx, seed: seed + 15, kind: 'moloz' }));
     } else {
       const t = p.t0 + (p.t1 - p.t0) * (0.3 + hash2(seed, 8, 2) * 0.4);
       for (const side of [-1, 1]) {

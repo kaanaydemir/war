@@ -1015,6 +1015,30 @@ const MUHUR: IconDef = {
   },
 };
 
+/** Gold tezhip rosette (şemse) with a lapis heart: 18×18 — ribbon medallions. */
+const ROZET: IconDef = {
+  w: 18,
+  h: 18,
+  frames: 1,
+  draw(p) {
+    // eight gold petals
+    for (let k = 0; k < 8; k++) {
+      const a = (k / 8) * Math.PI * 2 + Math.PI / 8;
+      shadedDisc(p, 9 + Math.cos(a) * 5.6, 9 + Math.sin(a) * 5.6, 2.6, P.gold, 2, 6);
+    }
+    shadedDisc(p, 9, 9, 5.4, P.gold, 1, 5);
+    // lapis heart with a turquoise glint and a tiny gold knot
+    shadedDisc(p, 9, 9, 3.2, P.blue, 1, 4);
+    p.set(8, 7, '#6cc6cc');
+    p.set(9, 9, P.gold[6]);
+    p.set(8, 9, P.gold[4]);
+    p.set(10, 9, P.gold[4]);
+    p.set(9, 8, P.gold[4]);
+    p.set(9, 10, P.gold[3]);
+    p.outline(P.outline[1]);
+  },
+};
+
 /** Tezhip corner ornament (top-left orientation) 14×14. */
 const KOSE = rowsIcon([
   '.kkkkkkkkkk...',
@@ -1054,6 +1078,108 @@ function crosshair(): PixelCanvas {
     '......kkk......',
   ]);
   return upscale(p, 2);
+}
+
+/** Small priority pennant (Rumeli Hisarı tower priority): 7×9. */
+const ONCELIK = rowsIcon([
+  'kk.....',
+  'kGkkk..',
+  'kg555k.',
+  'kg4445k',
+  'kg333k.',
+  'kgkkk..',
+  'kg.....',
+  'kg.....',
+  'kk.....',
+]);
+
+/** Anchor (demirle): 11×12. */
+const DEMIR = rowsIcon([
+  '....kkk....',
+  '...kTkSk...',
+  '...kSkSk...',
+  '..kkkSkkk..',
+  '..kTTtSSk..',
+  '..kkkSkkk..',
+  '....kSk....',
+  'kk..kSk..kk',
+  'kTk.kSk.kSk',
+  'kTSkkSkkSsk',
+  '.ksSSSSSssk',
+  '..kkkkkkkk.',
+]);
+
+/** Weather glyphs for the calendar (12×12, animated). */
+function cloud(p: PixelCanvas, dark: boolean): void {
+  const ramp = dark ? [P.steel[2], P.steel[3], P.steel[4]] : [P.steel[4], P.steel[5], P.steel[6]];
+  const blobs: [number, number, number][] = [
+    [3.5, 4.5, 2.3],
+    [6.5, 3.5, 3],
+    [9, 5, 2.2],
+  ];
+  for (let y = 0; y < 8; y++)
+    for (let x = 0; x < 12; x++) {
+      let inside = false;
+      let lit = 0;
+      for (const [cx, cy, r] of blobs) {
+        const dx = x + 0.5 - cx;
+        const dy = y + 0.5 - cy;
+        if (dx * dx + dy * dy <= r * r) {
+          inside = true;
+          lit = Math.max(lit, -(dx * 0.6 + dy * 0.8) / r);
+        }
+      }
+      if (y > 6) inside = inside && x > 1 && x < 11;
+      if (!inside) continue;
+      p.set(x, y, lit > 0.35 ? ramp[2] : lit > -0.25 ? ramp[1] : ramp[0]);
+    }
+}
+
+function weatherIcon(kind: 'yagmur' | 'dolu' | 'sis' | 'kar'): IconDef {
+  return {
+    w: 12,
+    h: 12,
+    frames: 4,
+    period: kind === 'sis' ? 2.4 : kind === 'kar' ? 1.6 : 0.6,
+    draw(p, f) {
+      if (kind === 'sis') {
+        // drifting fog bands under a pale sun
+        shadedDisc(p, 8, 3.5, 2.6, P.gold, 3, 6);
+        const rows = [5, 7, 9, 11];
+        rows.forEach((y, i) => {
+          const off = (f + i * 2) % 4;
+          for (let x = 0; x < 12; x++) {
+            const on = ((x + off * (i % 2 ? 1 : -1) + 16) % 8) < 6;
+            if (on) p.set(x, y, i % 2 ? P.steel[5] : P.steel[6]);
+          }
+        });
+        p.outline(P.outline[1]);
+        return;
+      }
+      cloud(p, kind !== 'kar');
+      const drops: [number, number][] = [
+        [2, 8],
+        [5, 9],
+        [8, 8],
+        [10, 10],
+        [4, 11],
+      ];
+      for (const [dx, dy] of drops) {
+        const fall = kind === 'kar' ? f * 0.5 : f;
+        const y = 8 + ((dy - 8 + Math.floor(fall)) % 4);
+        const x = kind === 'kar' ? dx + (Math.floor(f + dx) % 2) : dx - (kind === 'yagmur' ? (y - 8) >> 1 : 0);
+        if (x < 0 || x > 11 || y > 11) continue;
+        if (kind === 'yagmur') {
+          p.set(x, y, P.water[6] ?? P.blue[5]);
+          if (y + 1 <= 11) p.set(x, y + 1, P.blue[4]);
+        } else if (kind === 'dolu') {
+          p.set(x, y, P.steel[6]);
+          if (x + 1 <= 11) p.set(x + 1, y, P.steel[5]);
+        } else p.set(x, y, P.cloth[5]);
+      }
+      p.outline(P.outline[1]);
+    },
+  };
 }
 
 export const ICONS: Record<string, IconDef> = {
@@ -1106,6 +1232,13 @@ export const ICONS: Record<string, IconDef> = {
   'gok-tutulma': skyMedallion('tutulma'),
   muhur: MUHUR,
   kose: KOSE,
+  rozet: ROZET,
+  'sancak-kucuk': ONCELIK,
+  demir: DEMIR,
+  'hava-yagmur': weatherIcon('yagmur'),
+  'hava-dolu': weatherIcon('dolu'),
+  'hava-sis': weatherIcon('sis'),
+  'hava-kar': weatherIcon('kar'),
 };
 
 /** Render an icon (all frames side by side) into a PixelCanvas. */
@@ -1439,6 +1572,7 @@ export function artCssVars(): Record<string, string> {
     '--hud-sacak': `url(${sacakUrl()})`,
     '--hud-kose': `url(${iconUrl('kose')})`,
     '--hud-muhur': `url(${iconUrl('muhur')})`,
+    '--hud-rozet': `url(${iconUrl('rozet')})`,
     '--hud-imlec': `url(${cursorUrl()}) 15 15, crosshair`,
   };
 }

@@ -1,11 +1,12 @@
 import Phaser from 'phaser';
 import type { RenderContext } from '../../core/feature';
 import type { LoopHandle } from '../../core/fx';
+import type { PixelCanvas } from '../../art/pixel';
 import { DEPTH } from '../../core/layers';
 import { hash2 } from '../../core/rng';
 import type { GameState } from '../../core/state';
 import { geoToTile } from '../../data/geography';
-import { CISTERNS, layoutCity, type CityItem, type CityLayout } from './city';
+import { layoutCity, type CityItem, type CityLayout } from './city';
 import { CISTERN_SPECS, LANDMARKS, SHEETS, valensPieces, type SheetSpec } from './cityArt';
 import { LINES, nearestOnLine, offsetAt } from './geom';
 import { Box } from './prims';
@@ -68,7 +69,8 @@ export class CityRender {
   private swayAcc = 0;
   private smokeAcc = 0;
   private night = 0;
-  timing: Record<string, number> = {};
+  private clusterPx: { x: number; y: number }[] = [];
+  private visClusters: CityLayout['clusters'] = [];
 
   constructor(
     private rc: RenderContext,
@@ -76,9 +78,7 @@ export class CityRender {
   ) {
     const scene = rc.scene;
     const w = rc.world;
-    const T0 = performance.now();
     this.layout = layoutCity(w);
-    this.timing.layout = performance.now() - T0;
     for (const it of this.layout.items) {
       const p = w.toWorld(it.tx, it.ty);
       const sh = SHEET_OF[it.kind];
@@ -118,19 +118,13 @@ export class CityRender {
         this.objs.push({ img, x: p.x, y: p.y, r: c.w });
       }
     }
-    const T1 = performance.now();
-    this.timing.sprites = T1 - T0 - this.timing.layout;
     this.buildAqueduct(ground);
-    const T2 = performance.now();
     this.buildHarbours();
-    this.timing.aqueduct = T2 - T1;
-    this.timing.harbours = performance.now() - T2;
     // townsfolk pool
     for (let i = 0; i < 30; i++) {
       const spr = scene.add.sprite(0, 0, 'city/insan', 0).setOrigin(0.5, 1).setVisible(false);
       this.walkers.push({ spr, cluster: -1, tx: 0, ty: 0, gx: 0, gy: 0, wait: Math.random() * 2, active: false });
     }
-    void CISTERNS;
   }
 
   private decorate(it: CityItem, x: number, y: number): void {
@@ -182,7 +176,7 @@ export class CityRender {
       const key = `city/valens-${i}`;
       if (!tm.exists(key)) {
         const out = renderScene(sc, { w, h, px0: PROJ_OX - ox, py0: PROJ_OY - oy, own: (q) => q.owner === i, ground, groundShadow: () => true, shadowAlpha: 0.34, skirt: 3 });
-        tm.addCanvas(key, out.canvas.toCanvas());
+        addPixelTexture(tm, key, out.canvas);
       }
       const fm = (pc.f0 + pc.f1) / 2;
       const o = (pr as unknown as { o: { ax: number; ay: number; bx: number; by: number } }).o;
@@ -240,7 +234,7 @@ export class CityRender {
         const sc = new Scene();
         for (const pr of prims) sc.add(pr);
         const out = renderScene(sc, { w: W, h: H, px0: PROJ_OX - ox, py0: PROJ_OY - oy, own: () => true, ground: () => 0, groundShadow: () => true, shadowAlpha: 0.3, skirt: 3 });
-        tm.addCanvas(key, out.canvas.toCanvas());
+        addPixelTexture(tm, key, out.canvas);
       }
       const cc = P(0, 0.4);
       const img = this.rc.scene.add.image(ox, oy, key).setOrigin(0, 0).setDepth(PROJ_OY + (cc.tx + cc.ty) * 8);
@@ -319,9 +313,12 @@ export class CityRender {
   }
 
   private updateWalkers(dt: number, view: Phaser.Geom.Rectangle): void {
-    const clusters = this.layout.clusters.filter((c) => {
-      const p = this.rc.world.toWorld(c.tx, c.ty);
-      return p.x > view.x - 40 && p.x < view.right + 40 && p.y > view.y - 40 && p.y < view.bottom + 40;
+    if (!this.clusterPx.length) for (const c of this.layout.clusters) this.clusterPx.push(this.rc.world.toWorld(c.tx, c.ty));
+    const clusters = this.visClusters;
+    clusters.length = 0;
+    this.layout.clusters.forEach((c, i) => {
+      const p = this.clusterPx[i];
+      if (p.x > view.x - 40 && p.x < view.right + 40 && p.y > view.y - 40 && p.y < view.bottom + 40) clusters.push(c);
     });
     const nActive = Math.round(this.walkers.length * (1 - this.night * 0.8));
     let k = 0;
@@ -397,6 +394,16 @@ export class CityRender {
     }
     for (const w of this.walkers) w.spr.destroy();
   }
+}
+
+/** Upload a PixelCanvas as a Phaser canvas texture (CPU-backed context: cheap to upload). */
+function addPixelTexture(tm: Phaser.Textures.TextureManager, key: string, pc: PixelCanvas): void {
+  const tex = tm.createCanvas(key, pc.w, pc.h)!;
+  const ctx = tex.getContext();
+  const img = ctx.createImageData(pc.w, pc.h);
+  img.data.set(pc.data);
+  ctx.putImageData(img, 0, 0);
+  tex.refresh();
 }
 
 export function valensCenter(): { tx: number; ty: number } {

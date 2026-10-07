@@ -5,10 +5,12 @@
  */
 import type { ComponentChildren } from 'preact';
 import { FLAG } from '../../core/flags';
-import type { GameState } from '../../core/state';
+import { RESOURCE_ADI, RESOURCE_IDS, type GameState } from '../../core/state';
 import { store } from '../../core/store';
-import { bridgeCheck, overlandCheck, type Requirement } from '../../features/navy/api';
-import { fmtPct } from './format';
+import { landmarkTile } from '../../data/landmarks';
+import { bridgeCheck, navalBattleActive, overlandCheck, type Requirement } from '../../features/navy/api';
+import { sectionCenter } from '../../features/fortifications/api';
+import { fmtInt, fmtPct } from './format';
 import { startTarget } from './Katmanlar';
 import { checklistOk, safe, sonHucumChecklist, type CheckItem } from './logic';
 import { opt } from './opt';
@@ -131,20 +133,51 @@ function Kopru({ s }: { s: GameState }) {
 
 function Kule({ s }: { s: GameState }) {
   if (s.time.phase !== 'kusatma') return null;
-  if (s.flags[FLAG.kuleYapildi] && !s.flags[FLAG.kuleYandi]) return null;
+  const standing = opt.towers(s).find((t) => t.status !== 'yikildi' && t.status !== 'yaniyor') ?? null;
+  if (standing) {
+    const sec = s.sections[standing.sectionId];
+    const prog = standing.status === 'insa' ? standing.progress : standing.approach;
+    return (
+      <Madalyon
+        ikon="ozel-kule"
+        ad="Kuşatma kulesi"
+        hazir={true}
+        tamam={standing.status === 'surda'}
+        ilerleme={prog}
+        durum={`${sec?.name ?? ''} · ${standing.statusText}`}
+        ipucu={
+          <>
+            {standing.blocked && <div class="ipucu-metin kirmizi-yazi">{standing.blocked}</div>}
+            <div class="ipucu-metin soluk">Tıkla: kuleyi seç ve kamerayı oraya götür.</div>
+          </>
+        }
+        onClick={() => {
+          store.setUi({ selection: [{ kind: 'building', id: standing.pickId, score: 0 }] });
+          const c = safe(() => sectionCenter(standing.sectionId), null);
+          if (c) store.actions.focusTile(c.tx, c.ty);
+        }}
+      />
+    );
+  }
+  const cost = opt.towerCost();
   const reqs: CheckItem[] = [
     { label: 'Kuşatma sürüyor', ok: s.time.phase === 'kusatma' },
-    { label: 'Kereste ve ıslak deri kaplama', ok: s.resources.kereste >= 200, detail: `${Math.floor(s.resources.kereste)} kereste`, soft: true },
+    ...RESOURCE_IDS.filter((r) => (cost[r] ?? 0) > 0).map((r) => ({
+      label: `${fmtInt(cost[r] ?? 0)} ${RESOURCE_ADI[r].toLocaleLowerCase('tr')}`,
+      ok: s.resources[r] >= (cost[r] ?? 0),
+      detail: `(${fmtInt(Math.floor(s.resources[r]))} var)`,
+    })),
   ];
+  const ok = reqs.every((r) => r.ok);
   return (
     <Madalyon
       ikon="ozel-kule"
       ad="Kuşatma kulesi"
-      hazir={true}
+      hazir={ok}
       durum={s.flags[FLAG.kuleYandi] ? 'Önceki kule yakıldı' : undefined}
       ipucu={
         <>
-          <div class="ipucu-metin">Ahşap, ıslak derilerle kaplı yürüyen kule. Hendeğe yanaştırılır; Bizanslılar gece yakmaya çalışır.</div>
+          <div class="ipucu-metin">Ahşap, ıslak öküz derileriyle kaplı yürüyen kule. Hendek dolunca surlara itilir; Rumlar gece yakmaya çalışır.</div>
           <Liste items={reqs} />
           <div class="ipucu-metin soluk">Ardından haritada bir kara suru kesimine tıkla.</div>
         </>
@@ -240,11 +273,40 @@ function SonHucum({ s }: { s: GameState }) {
   );
 }
 
+function DenizSavasi({ s }: { s: GameState }) {
+  if (!safe(() => navalBattleActive(s), !!s.flags[FLAG.denizSavasiSuruyor])) return null;
+  const foes = s.ships.filter((x) => x.side !== 'osmanli' && x.status !== 'batik');
+  const ours = s.ships.filter((x) => x.side === 'osmanli' && (x.status === 'savas' || x.status === 'yaniyor'));
+  const go = () => {
+    const list = foes.length ? foes : ours;
+    if (list.length) {
+      const tx = list.reduce((a, x) => a + x.tx, 0) / list.length;
+      const ty = list.reduce((a, x) => a + x.ty, 0) / list.length;
+      store.actions.focusTile(tx, ty);
+    } else {
+      const t = safe(() => landmarkTile('akropolis'), null);
+      if (t) store.actions.focusTile(t.tx, t.ty);
+    }
+  };
+  return (
+    <Btn tur="gece" class="deniz-savasi-durum" sesi="ac" onClick={go} ipucu={<div class="ipucu-icerik">Tıkla: kamerayı savaşa götür.</div>}>
+      <Ikon ad="ozel-gemi" />
+      <span class="son-hucum-yazi">
+        <span>{'Deniz savaşı'.toLocaleUpperCase('tr')}</span>
+        <span class="son-hucum-alt">
+          <span class="num">{foes.length}</span> Hristiyan gemisi · <span class="num">{ours.length}</span> kadırga çarpışıyor
+        </span>
+      </span>
+    </Btn>
+  );
+}
+
 export function OzelEylemler() {
   const s = store.state;
   if (!s || s.time.phase === 'hazirlik' || s.time.phase === 'bitti') return null;
   return (
     <div class="ozel-eylemler etkilesim">
+      <DenizSavasi s={s} />
       <SonHucum s={s} />
       <div class="ozel-sira">
         <GemilerKaradan s={s} />

@@ -7,8 +7,8 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { formatDate, siegeDayNumber } from '../../core/calendar';
 import type { Command } from '../../core/commands';
 import { store } from '../../core/store';
-import { buildingDef } from '../../features/economy/api';
-import { getDawnReport, type DawnReport } from '../../features/events/api';
+import { buildingDef, isPlacementValid } from '../../features/economy/api';
+import { eventCardView, getDawnReport, type DawnReport } from '../../features/events/api';
 import { sectionAt } from '../../features/fortifications/api';
 import { LANDMARKS, landmarkTile } from '../../data/landmarks';
 import { getWorld } from '../../game/GameScene';
@@ -27,10 +27,13 @@ const SATIR_IKON: Record<DawnReport['lines'][number]['kind'], string> = {
 };
 
 export function kapatSafak(): void {
-  const resume = hud.dawn?.resume ?? 1;
-  setHud({ dawn: null });
+  const resume = (hud.dawn?.resume ?? 1) || 1;
+  const s = store.state;
+  // an event card that pauses the game keeps the pause; resume once it closes
+  const cardHolds = !!s?.events.active && safe(() => !!eventCardView(s)?.pauses, true);
+  setHud({ dawn: null, resumeAfterCard: cardHolds ? resume : null });
   store.setUi({ showDawnReport: false });
-  if (store.state && store.state.time.speed === 0) store.dispatch({ t: 'hiz', speed: resume || 1 });
+  if (!cardHolds && s && s.time.speed === 0 && !s.outcome) store.dispatch({ t: 'hiz', speed: resume });
 }
 
 export function SafakRaporu() {
@@ -218,17 +221,52 @@ export function HedefModu() {
 
 const YAKIN_ADI: Record<string, string> = { kaya: 'kayalık arazinin', orman: 'orman kenarının', su: 'suyun' };
 
+/** Live validity of the hovered placement spot (economy's full check, Turkish reason). */
+function usePlacementCheck(building: string | null): { ok: boolean; reason?: string } | null {
+  const [res, setRes] = useState<{ ok: boolean; reason?: string } | null>(null);
+  const key = useRef('');
+  useEffect(() => {
+    if (!building) {
+      key.current = '';
+      setRes(null);
+      return;
+    }
+    const iv = window.setInterval(() => {
+      const s = store.state;
+      const ht = store.ui.hoverTile;
+      const w = safe(() => getWorld(), null);
+      if (!s || !ht || !w) return;
+      const k = `${building},${ht.tx},${ht.ty},${s.buildings.length},${Math.floor(s.resources.akce)},${Math.floor(s.resources.tas)},${Math.floor(s.resources.kereste)}`;
+      if (k === key.current) return;
+      key.current = k;
+      const r = safe(() => isPlacementValid(s, w, building, ht.tx, ht.ty), { ok: true } as { ok: boolean; reason?: string });
+      setRes((p) => (p && p.ok === r.ok && p.reason === r.reason ? p : r));
+    }, 110);
+    return () => clearInterval(iv);
+  }, [building]);
+  return res;
+}
+
 export function YerlestirmeIpucu() {
   const pl = store.ui.placement;
+  const chk = usePlacementCheck(pl?.building ?? null);
   if (!pl) return null;
   const def = safe(() => buildingDef(pl.building), undefined);
   return (
-    <div class="yerlestirme-serit">
-      <b>{def?.name ?? pl.building}</b>
-      <span>
-        <span class="tus">Sol tık</span> kur · <span class="tus">Shift</span> ile birden çok · <span class="tus">Sağ tık</span>/<span class="tus">Esc</span> vazgeç
-      </span>
-      {def?.near && <span class="soluk">{YAKIN_ADI[def.near] ?? def.near} yanına kurulmalı</span>}
+    <div class={`yerlestirme-serit ${chk ? (chk.ok ? 'uygun' : 'uygunsuz') : ''}`}>
+      <div class="yer-satir">
+        <b>{def?.name ?? pl.building}</b>
+        {chk ? (
+          <span key={chk.reason ?? 'ok'} class={`yer-durum ${chk.ok ? 'yesil-yazi' : 'kirmizi-yazi'}`}>
+            <Ikon ad={chk.ok ? 'onay' : 'red'} /> {chk.ok ? 'Buraya kurulabilir' : chk.reason}
+          </span>
+        ) : (
+          def?.near && <span class="soluk">{YAKIN_ADI[def.near] ?? def.near} yanına kurulmalı</span>
+        )}
+      </div>
+      <div class="yer-satir yer-tuslar">
+        <span class="tus">Sol tık</span> kur · <span class="tus">Shift</span> birden çok · <span class="tus">Sağ tık</span>/<span class="tus">Esc</span> vazgeç
+      </div>
     </div>
   );
 }

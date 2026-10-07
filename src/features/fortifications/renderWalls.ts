@@ -55,6 +55,9 @@ interface DecalRT {
   h: number;
 }
 
+/** Moat fill quantised to 5 % steps (finer changes are invisible but would cost re-renders). */
+const moatStep = (m: number): number => Math.round(Math.max(0, Math.min(1, m)) * 20) / 20;
+
 /** Per-piece damage level 0..4 from section state (deterministic). */
 export function pieceLevel(state: GameState, p: PieceDef): number {
   if (!p.sec) return 0;
@@ -92,11 +95,18 @@ export class WallsRender {
   private dirtyAny = true;
   private age = 0;
   private byLine = new Map<LineId, PieceRT[]>();
+  /** numeric fingerprint of the wall state last seen by refreshDamage */
+  private fp: number[] = [];
+  private nearRect = new Phaser.Geom.Rectangle();
   private gf: (tx: number, ty: number) => number;
   /** Called when a piece gets worse (debris & dust are spawned by the caller). */
   onCrumble?: (p: PieceDef, newLevel: number, oldLevel: number, towers: TowerSpec[]) => void;
   /** total ms spent rendering (diagnostics) */
   renderMs = 0;
+  /** bumped whenever any piece's damage level or collapsed towers change */
+  version = 0;
+  /** bumped whenever a piece texture is (re)rendered */
+  texVersion = 0;
 
   constructor(
     private rc: RenderContext,
@@ -150,8 +160,36 @@ export class WallsRender {
     return new Set(towers.filter((t) => idx.has(t.index)));
   }
 
+  /** Has any section's wall state changed since the last refresh? (no allocations) */
+  private sectionsChanged(state: GameState): boolean {
+    let i = 0;
+    let changed = false;
+    const fp = this.fp;
+    for (const id in state.sections) {
+      const s = state.sections[id];
+      const a = s.outer;
+      const b = s.inner;
+      const c = s.towersDown;
+      const d = moatStep(s.moatFill);
+      if (fp[i] !== a || fp[i + 1] !== b || fp[i + 2] !== c || fp[i + 3] !== d) {
+        fp[i] = a;
+        fp[i + 1] = b;
+        fp[i + 2] = c;
+        fp[i + 3] = d;
+        changed = true;
+      }
+      i += 4;
+    }
+    if (fp.length !== i) {
+      fp.length = i;
+      changed = true;
+    }
+    return changed;
+  }
+
   /** Recompute levels; changed pieces (and neighbours) need new textures. */
   private refreshDamage(state: GameState, initial = false): void {
+    if (!this.sectionsChanged(state) && !initial) return;
     this.collapsedBySec.clear();
     for (const sec of Object.keys(SPANS)) this.collapsedBySec.set(sec, this.sectionCollapsed(state, sec));
     for (const p of this.pieces) {
@@ -161,11 +199,13 @@ export class WallsRender {
       if (lvl !== p.level || csig !== p.collapsedSig) {
         const worse = lvl > p.level || csig > p.collapsedSig;
         const newly = p.def.towers.filter((t, i) => col.has(t) && p.collapsedSig[i] !== '1');
+        const old = p.level;
         p.level = lvl;
         p.collapsedSig = csig;
+        this.version++;
         if (!initial) {
           if (worse) {
-            this.onCrumble?.(p.def, lvl, p.level, newly);
+            this.onCrumble?.(p.def, lvl, old, newly);
             p.shake = 0.32;
           }
           this.sceneDirty.add(p.def.line);
@@ -176,7 +216,7 @@ export class WallsRender {
     }
     for (const d of this.decals) {
       const s = d.def.sec ? state.sections[d.def.sec] : null;
-      const want = `${this.pieces[d.def.idx]?.level ?? 0}|${(s ? s.moatFill : 0).toFixed(2)}`;
+      const want = `${this.pieces[d.def.idx]?.level ?? 0}|${moatStep(s ? s.moatFill : 0)}`;
       if (want !== d.want) this.dirtyAny = true;
       d.want = want;
     }
@@ -185,7 +225,7 @@ export class WallsRender {
   /** neighbours' occlusion changes too: force a re-render of nearby pieces */
   private touchAround(p: PieceRT): void {
     for (const q of this.byLine.get(p.def.line) ?? []) {
-      if (q.def.t1 < p.def.t0 - 1.6 || q.def.t0 > p.def.t1 + 1.6) continue;
+      if (q === p || q.def.t1 < p.def.t0 - 0.9 || q.def.t0 > p.def.t1 + 0.9) continue;
       q.shown = q.shown ? q.shown + '*' : '';
     }
   }
@@ -213,7 +253,19 @@ export class WallsRender {
     img.data.set(cv.data);
     ctx.putImageData(img, 0, 0);
     tex.refresh();
-    (tex as unknown as { fortSig: string }).fortSig = sig;
+    // our own opacity mask (Phaser's cached pixel data is not refreshed by refresh())
+    const alpha = new Uint8Array(cv.w * cv.h);
+    for (let i = 0, n = cv.w * cv.h; i < n; i++) alpha[i] = cv.data[i * 4 + 3] >= 250 ? 1 : 0;
+    const tagged = tex as unknown as { fortSig: string; fortAlpha: Uint8Array };
+    tagged.fortSig = sig;
+    tagged.fortAlpha = alpha;
+  }
+
+  /** Opacity mask (1 = solid) of a fortifications canvas texture, row-major w×h. */
+  alphaOf(key: string): Uint8Array | null {
+    const tm = this.rc.scene.textures;
+    if (!tm.exists(key)) return null;
+    return (tm.get(key) as unknown as { fortAlpha?: Uint8Array }).fortAlpha ?? null;
   }
 
   private texSig(key: string): string | null {
@@ -234,6 +286,7 @@ export class WallsRender {
     const out = renderPiece(sc, p.def, this.gf);
     const sig = this.sig(p);
     this.uploadCanvas(p.def.key, out.canvas, sig);
+    this.texVersion++;
     p.shown = sig;
     this.ensureImage(p);
     this.renderMs += performance.now() - t0;
@@ -241,7 +294,7 @@ export class WallsRender {
 
   private renderDecal(d: DecalRT, state: GameState): void {
     const s = d.def.sec ? state.sections[d.def.sec] : null;
-    const moat = s ? s.moatFill : 0;
+    const moat = moatStep(s ? s.moatFill : 0);
     const lvl = this.pieces[d.def.idx]?.level ?? 0;
     const sig = d.want;
     if (this.texSig(d.key) !== sig) {
@@ -275,14 +328,15 @@ export class WallsRender {
       for (const l of this.sceneDirty) this.buildScene(l);
       this.sceneDirty.clear();
     }
-    // which pieces need a texture?
-    const near = new Phaser.Geom.Rectangle(view.x - view.width * 0.5, view.y - view.height * 0.5, view.width * 2, view.height * 2);
-    const todo: PieceRT[] = [];
+    // fast path: every texture is current and nothing changed → only cull/shake
     if (this.allDone && !this.dirtyAny) {
       this.cull(dt, view);
       this.first = false;
       return;
     }
+    // which pieces need a texture?
+    const near = this.nearRect.setTo(view.x - view.width * 0.5, view.y - view.height * 0.5, view.width * 2, view.height * 2);
+    const todo: PieceRT[] = [];
     this.dirtyAny = false;
     for (const p of this.pieces) {
       const want = this.sig(p);
@@ -308,18 +362,22 @@ export class WallsRender {
       const start = performance.now();
       // first frame: everything in view synchronously; then a time budget
       this.age += dt;
-      const budget = this.first ? 900 : this.age < 4 ? 14 : 6;
+      // first frame: everything in view; while loading a generous budget; later ONE piece
+      // per frame (≈4–8 ms each) so a crumbling section never costs more than a frame's slack
+      const budget = this.first ? 900 : this.age < 4 ? 14 : 0;
+      let done = 0;
       for (const p of todo) {
         const isVis = vis(p);
         if (!this.first && isVis && p.shake > 0.04) continue; // let the crumble shake play
         if (this.first && !isVis && !this.inView(p.def, near)) break;
-        if (!this.first && performance.now() - start > budget) break;
+        if (!this.first && done > 0 && performance.now() - start > budget) break;
         if (this.first && !isVis && performance.now() - start > budget) break;
         this.renderPieceTex(p);
+        done++;
       }
     }
     // decals
-    let dn = this.first ? 999 : 3;
+    let dn = this.first ? 999 : 2;
     for (const d of this.decals) {
       if (d.sig === d.want && d.img) continue;
       if (!this.first && !this.inView(d, near) && dn < 3) continue;
@@ -358,17 +416,15 @@ export class WallsRender {
   /** Section under world pixel (pixel-exact on wall pieces: opaque texels only). */
   pick(wx: number, wy: number): { sec: SectionId; piece: PieceDef } | null {
     let best: PieceRT | null = null;
-    const tm = this.rc.scene.textures;
     for (const p of this.pieces) {
       const d = p.def;
-      if (!d.sec || !p.img) continue;
+      if (!d.sec || !p.img || !p.img.visible) continue;
       const x = Math.floor(wx - d.ox);
       const y = Math.floor(wy - d.oy);
       if (x < 0 || y < 0 || x >= d.w || y >= d.h) continue;
       if (best && d.depth <= best.def.depth) continue;
-      const tex = tm.get(d.key) as Phaser.Textures.CanvasTexture;
-      const px = tex.getPixel?.(x, y);
-      if (!px || px.alpha < 250) continue;
+      const a = this.alphaOf(d.key);
+      if (!a || a[y * d.w + x] !== 1) continue;
       best = p;
     }
     return best ? { sec: best.def.sec!, piece: best.def } : null;

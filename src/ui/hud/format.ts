@@ -165,3 +165,16 @@ export function splitSuffix(s: string): [string, string] {
   const m = /^(.*?\d)(B|Mn)$/.exec(s);
   return m ? [m[1], m[2]] : [s, ''];
 }
+
+const RUZGAR_ADI = ['Gündoğusu', 'Keşişleme', 'Kıble', 'Lodos', 'Günbatısı', 'Karayel', 'Yıldız', 'Poyraz'] as const;
+
+/**
+ * Turkish sailors' wind name for a wind blowing TOWARD `dir` (radians, tile
+ * space: 0 = east, +π/2 = south). Named after where it comes FROM:
+ * a wind blowing north (−π/2) is "Kıble" (the south wind).
+ */
+export function windName(dir: number): string {
+  const from = dir + Math.PI;
+  const i = ((Math.round((from / (Math.PI * 2)) * 8) % 8) + 8) % 8;
+  return RUZGAR_ADI[i];
+}

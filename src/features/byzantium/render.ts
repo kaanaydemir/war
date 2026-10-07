@@ -3,7 +3,7 @@ import { P, hex } from '../../art/palette';
 import { segmentOf } from '../../core/calendar';
 import type { RenderContext } from '../../core/feature';
 import { FLAG } from '../../core/flags';
-import type { LightHandle } from '../../core/fx';
+import type { LightHandle, LoopHandle } from '../../core/fx';
 import { hash2 } from '../../core/rng';
 import type { GameState, SectionId } from '../../core/state';
 import { lightLevel } from '../atmosphere/api';
@@ -27,6 +27,9 @@ interface Pt {
 const CULL = 160;
 const MAX_WORKERS = 72;
 const MAX_LIGHTS = 20;
+const MAX_FIRES = 3;
+/** Tiles beyond the wall line where a sortie party emerges (outer wall face / peribolos). */
+const POSTERN_OUT = 2.8;
 const WALK_SPEED = 11; // world px / s
 const RUN_SPEED = 30;
 const FIRE = hex(P.fire[4]);
@@ -51,6 +54,10 @@ interface Spot {
   inn: Pt;
   pole: Spr | null;
   light: LightHandle | null;
+  /** Material pile at the supply point (beams / sacks of earth). */
+  pile: Spr | null;
+  /** Small work fire by the pile (main sites only). */
+  fire: LoopHandle | null;
   props: Prop[];
 }
 
@@ -146,6 +153,10 @@ export class ByzRender {
   private offs: (() => void)[] = [];
   private activeSparks: { spr: Spr; t: number }[] = [];
   private nightVis = 0;
+  private fireCount = 0;
+  /** Frames since createRender: things that exist when a scene starts appear at once (no fade-in). */
+  private frames = 0;
+  private lastView = { x: NaN, y: NaN, w: 0 };
 
   constructor(private rc: RenderContext) {
     this.scene = rc.scene;
@@ -165,15 +176,25 @@ export class ByzRender {
     this.offs.push(rc.bus.on('sortie', (e) => this.spawnSortie(e.sectionId, e.at)));
     // QA hook (visual only — emits nothing into the simulation)
     (window as unknown as { __byz?: unknown }).__byz = {
+      owner: this,
       sortie: (id: SectionId = 'kara-lykos') => {
         const c = sectionCenter(id);
         const n = sectionOutwardNormal(id);
         this.spawnSortie(id, { tx: c.tx + n.tx * 4, ty: c.ty + n.ty * 4 }, true);
       },
+      /** Advance only this renderer's animation clock (slow headless QA runs). */
+      step: (sec = 1) => {
+        const st = rc.getState();
+        for (let t = 0; t < sec; t += 1 / 30) this.update(st, 1 / 30);
+      },
       info: () => ({
         nightVis: this.nightVis,
         lights: this.lightCount,
+        time: this.time,
+        refreshAcc: this.refreshAcc,
+        view: (({ x, y, width, height }) => ({ x, y, width, height }))(this.view()),
         parties: this.parties.length,
+        runners: this.parties.map((p) => ({ phase: p.phase, gate: p.gate, target: p.target, r: p.runners.map((r) => [Math.round(r.x), Math.round(r.y), +r.spr.alpha.toFixed(2)]) })),
         sites: [...this.sites.values()].map((s) => ({
           id: s.id,
           share: s.share,
@@ -186,6 +207,8 @@ export class ByzRender {
   }
 
   destroy(): void {
+    const w = window as unknown as { __byz?: { owner?: unknown } };
+    if (w.__byz?.owner === this) delete w.__byz;
     for (const off of this.offs) off();
     this.offs = [];
     for (const site of this.sites.values()) this.dropSite(site, true);
@@ -200,6 +223,11 @@ export class ByzRender {
   }
 
   // ───────────────────────────── helpers ─────────────────────────────
+
+  /** True during the first frames after a scene (re)start: spawn fully visible, settled. */
+  private warm(): boolean {
+    return this.frames <= 3;
+  }
 
   private view(): Phaser.Geom.Rectangle {
     return this.scene.cameras.main.worldView;
@@ -268,7 +296,7 @@ export class ByzRender {
       const ip = this.w(c.tx - nn.tx, c.ty - nn.ty);
       const il = Math.hypot(ip.x - a.x, ip.y - a.y) || 1;
       const inn = { x: (ip.x - a.x) / il, y: (ip.y - a.y) / il };
-      spots.push({ t, work, supply, tan, inn, pole: null, light: null, props: [] });
+      spots.push({ t, work, supply, tan, inn, pole: null, light: null, pile: null, fire: null, props: [] });
     }
     return { id, share: 0, spots, workers: [], inView: false, seen: false };
   }
@@ -280,10 +308,21 @@ export class ByzRender {
       if (sp.pole) this.poles.put(sp.pole);
       sp.pole = null;
       sp.light = this.freeLight(sp.light);
+      this.dropDecor(sp);
       if (hard) {
         for (const pr of sp.props) this.props.put(pr.spr);
         sp.props = [];
       }
+    }
+  }
+
+  private dropDecor(sp: Spot): void {
+    if (sp.pile) this.props.put(sp.pile);
+    sp.pile = null;
+    if (sp.fire) {
+      sp.fire.destroy();
+      sp.fire = null;
+      this.fireCount--;
     }
   }
 
@@ -337,22 +376,35 @@ export class ByzRender {
       const want = site.inView ? Math.min(budget, Math.max(4, Math.min(18, Math.round(share * 42)))) : 0;
       budget -= want;
       this.balanceWorkers(site, want);
-      // lantern poles at spots (only in view)
-      for (const sp of site.spots) {
+      // lantern poles, material piles and a work fire at spots (only in view)
+      site.spots.forEach((sp, si) => {
+        if (site.inView && !sp.pile) {
+          const x = sp.supply.x + sp.tan.x * 7;
+          const y = sp.supply.y + sp.tan.y * 7;
+          sp.pile = this.props.get();
+          sp.pile.setFrame(si % 2 === 0 ? 0 : 6).setPosition(Math.round(x), Math.round(y)).setDepth(y);
+        }
+        if (site.inView && !sp.fire && si === 0 && share >= 0.2 && this.fireCount < MAX_FIRES) {
+          const x = sp.supply.x - sp.tan.x * 9 + sp.inn.x * 2;
+          const y = sp.supply.y - sp.tan.y * 9 + sp.inn.y * 2;
+          sp.fire = this.rc.fx.fire(Math.round(x), Math.round(y), 0.55);
+          this.fireCount++;
+        }
+        if (!site.inView) this.dropDecor(sp);
         if (site.inView && !sp.pole) {
           const off = 9;
           const px = sp.work.x + sp.tan.x * off + sp.inn.x * 3;
           const py = sp.work.y + sp.tan.y * off + sp.inn.y * 3;
           sp.pole = this.poles.get();
-          sp.pole.setPosition(Math.round(px), Math.round(py)).setDepth(py).setAlpha(0);
+          sp.pole.setPosition(Math.round(px), Math.round(py)).setDepth(py).setAlpha(this.warm() ? 1 : 0);
           sp.pole.play({ key: 'byz/fener:yan', startFrame: Math.floor(Math.random() * 4) });
-          sp.light = this.light(px + 3, py - 12, LANTERN, 56, 0);
+          sp.light = this.light(px + 2, py - 12, LANTERN, 60, 0);
         } else if (!site.inView && sp.pole) {
           this.poles.put(sp.pole);
           sp.pole = null;
           sp.light = this.freeLight(sp.light);
         }
-      }
+      });
     }
   }
 
@@ -421,6 +473,7 @@ export class ByzRender {
       this.jitterRoute(wk);
       spr.play({ key: isciAnim(v, going ? load : 'yuru'), startFrame: Math.floor(Math.random() * 4) });
     }
+    if (this.warm()) wk.alpha = 1;
     spr.setPosition(Math.round(wk.x), Math.round(wk.y)).setDepth(wk.y).setAlpha(0);
     return wk;
   }
@@ -485,7 +538,7 @@ export class ByzRender {
         this.placeLantern(wk, dt);
         if (wk.light) {
           wk.light.setPosition(wk.x + (spr.flipX ? -4 : 4), wk.y - 8);
-          wk.light.setIntensity(this.nightVis * wk.alpha * (0.75 + 0.15 * Math.sin(this.time * 9 + wk.u * 20)));
+          wk.light.setIntensity(1.15 * this.nightVis * wk.alpha * (0.8 + 0.15 * Math.sin(this.time * 9 + wk.u * 20)));
         }
         break;
       }
@@ -542,7 +595,7 @@ export class ByzRender {
     site.spots.forEach((sp, si) => {
       // spawn missing pieces (rise one by one)
       let alive = sp.props.filter((pr) => pr.alive).length;
-      if (alive < per && !sp.props.some((pr) => pr.t >= 0 && pr.t < 0.25)) {
+      while (alive < per && (this.warm() || !sp.props.some((pr) => pr.t >= 0 && pr.t < 0.25))) {
         const k = alive;
         const side = k % 2 === 0 ? 1 : -1;
         const along = (Math.floor((k + 1) / 2) * 9 + (hash2(si, k, 5) - 0.5) * 3) * side;
@@ -551,8 +604,13 @@ export class ByzRender {
         const y = sp.work.y + sp.tan.y * along + sp.inn.y * deep;
         const spr = this.props.get();
         const frame = Math.floor(hash2(si * 7 + k, site.id.length, 17) * YAPI_FRAMES);
-        spr.setFrame(frame).setPosition(Math.round(x), Math.round(y - 8)).setDepth(y).setAlpha(0);
-        sp.props.push({ spr, t: 0, x, y, alive: true });
+        if (this.warm()) {
+          spr.setFrame(frame).setPosition(Math.round(x), Math.round(y)).setDepth(y).setAlpha(1);
+          sp.props.push({ spr, t: -1, x, y, alive: true });
+        } else {
+          spr.setFrame(frame).setPosition(Math.round(x), Math.round(y - 8)).setDepth(y).setAlpha(0);
+          sp.props.push({ spr, t: 0, x, y, alive: true });
+        }
         alive++;
       }
       // retire extra pieces
@@ -602,11 +660,14 @@ export class ByzRender {
         gate = g;
       }
     }
-    if (!gate || bd > 220) {
+    // posterns open onto the peribolos: the party appears just beyond the outer wall face
+    const nn = sectionOutwardNormal(id);
+    let gt = this.gates.find((g) => g.x === gate?.x && g.y === gate?.y);
+    if (!gt || bd > 220) {
       const c = sectionCenter(id);
-      const nn = sectionOutwardNormal(id);
-      gate = this.w(c.tx - nn.tx * 0.4, c.ty - nn.ty * 0.4);
+      gt = { x: 0, y: 0, tx: c.tx, ty: c.ty };
     }
+    gate = this.w(gt.tx + nn.tx * POSTERN_OUT, gt.ty + nn.ty * POSTERN_OUT);
     const genoa = id === 'kara-lykos' || id === 'kara-topkapi' || id === 'kara-egrikapi';
     const n = 6 + Math.floor(Math.random() * 3);
     const runners: Runner[] = [];
@@ -709,11 +770,19 @@ export class ByzRender {
     const light = lightLevel(state);
     const night = siege && (seg === 'gece' || (seg === 'safak' && light < 0.3));
     const targetVis = night ? Math.max(0, Math.min(1, (0.62 - light) / 0.3)) : 0;
-    this.nightVis += (targetVis - this.nightVis) * Math.min(1, dt * 1.5);
+    this.frames++;
+    if (this.warm()) this.nightVis = targetVis;
+    else this.nightVis += (targetVis - this.nightVis) * Math.min(1, dt * 1.5);
 
+    // re-evaluate sites twice a second, at once when the camera jumps, and every early frame
+    const v = this.view();
+    const moved = Math.abs(v.x - this.lastView.x) + Math.abs(v.y - this.lastView.y) > 48 || v.width !== this.lastView.w || isNaN(this.lastView.x);
     this.refreshAcc += dt;
-    if (this.refreshAcc > 0.5) {
+    if (this.refreshAcc > 0.5 || moved || this.warm()) {
       this.refreshAcc = 0;
+      this.lastView.x = v.x;
+      this.lastView.y = v.y;
+      this.lastView.w = v.width;
       this.refreshSites(state, night);
     }
 
@@ -724,16 +793,18 @@ export class ByzRender {
         if (sp.pole) {
           const a = Math.min(1, sp.pole.alpha + dt * 1.5) * (site.share > 0 ? 1 : 0);
           sp.pole.setAlpha(site.share > 0 ? Math.min(1, sp.pole.alpha + dt * 1.5) : Math.max(0, sp.pole.alpha - dt));
-          if (sp.light) sp.light.setIntensity(this.nightVis * Math.max(a, sp.pole.alpha) * (0.95 + 0.12 * Math.sin(this.time * 7.3 + sp.t * 40) + 0.05 * Math.sin(this.time * 17)));
+          if (sp.light) sp.light.setIntensity(1.35 * this.nightVis * Math.max(a, sp.pole.alpha) * (0.95 + 0.12 * Math.sin(this.time * 7.3 + sp.t * 40) + 0.05 * Math.sin(this.time * 17)));
           if (site.share <= 0 && sp.pole.alpha <= 0.01) {
             this.poles.put(sp.pole);
             sp.pole = null;
             sp.light = this.freeLight(sp.light);
+            this.dropDecor(sp);
           }
         }
       }
       this.updateProps(state, site, id, dt, night && site.share > 0);
-      const empty = site.workers.length === 0 && site.spots.every((sp) => !sp.pole && sp.props.length === 0);
+      if (site.share <= 0) for (const sp of site.spots) if (!sp.pole) this.dropDecor(sp);
+      const empty = site.workers.length === 0 && site.spots.every((sp) => !sp.pole && !sp.pile && sp.props.length === 0);
       if (empty && site.share <= 0) this.sites.delete(id);
     }
 

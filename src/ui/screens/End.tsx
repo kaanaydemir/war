@@ -42,8 +42,20 @@ function useSequence(nLines: number): { t: number; skip: () => void; done: boole
   return { t, skip: () => setSkipped(true), done: t >= total, tAfter };
 }
 
-function Line(props: { show: boolean; children: string; class?: string; delay?: number }) {
-  return <p class={`son-satir ${props.show ? 'yaziliyor' : ''} ${props.class ?? ''}`}>{props.children}</p>;
+/** A narrative line "written in ink" word by word (works with wrapping and centring). */
+function Line(props: { show: boolean; children: string; class?: string }) {
+  const words = props.children.split(' ');
+  const step = Math.min(60, 1100 / Math.max(1, words.length));
+  return (
+    <p class={`son-satir ${props.show ? 'yaziliyor' : ''} ${props.class ?? ''}`}>
+      {words.map((w, i) => [
+        <span key={i} class="kelime" style={{ animationDelay: `${Math.round(i * step)}ms` }}>
+          {w}
+        </span>,
+        i < words.length - 1 ? ' ' : null,
+      ])}
+    </p>
+  );
 }
 
 function Ledger(props: { t0: number; t: number }) {
@@ -143,10 +155,10 @@ export function EndScreen() {
       <div class="son-sayfa etkilesim" onClick={(e) => e.stopPropagation()}>
         <div class="son-merdane ust" />
         <div class="son-kagit uk-kaydir">
-          <i class="kose k1" />
-          <i class="kose k2" />
-          <i class="kose k3" />
-          <i class="kose k4" />
+          <i class="son-kose k1" />
+          <i class="son-kose k2" />
+          <i class="son-kose k3" />
+          <i class="son-kose k4" />
           <div class="son-sutunlar">
             <div class="son-sol">
               <div class={`son-resim ${t >= T.title ? 'gorunur' : ''}`}>

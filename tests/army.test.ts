@@ -11,8 +11,8 @@ import { createCoreState } from '../src/game/newGame';
 import { createWorld } from '../src/features/world/terrain';
 import { recomputeBreach, sectionPoint } from '../src/features/fortifications/api';
 import { initWalls } from '../src/features/fortifications/sim';
-import { activeAssaults, finalAssaultStatus, orderGroups, recruitOptions } from '../src/features/army/api';
-import { initArmy, planMarch } from '../src/features/army/campaign';
+import { activeAssaults, awayReason, finalAssaultStatus, orderGroups, recruitOptions, sultanVisitStatus, trakyaStatus } from '../src/features/army/api';
+import { initArmy, planMarch, TRAKYA_DAYS } from '../src/features/army/campaign';
 import { UNIT_TYPES, COMMANDERS } from '../src/features/army/data';
 import { applyArmyScenario } from '../src/features/army/scenario';
 import { handleArmyCommand, tickArmy } from '../src/features/army/sim';
@@ -258,5 +258,69 @@ describe('final assault', () => {
     expect(fighting.length).toBeGreaterThan(3);
     const p = sectionPoint('kara-lykos', 0.5);
     for (const g of fighting.filter((x) => x.order.sectionId === 'kara-lykos')) expect(Math.hypot(g.tx - p.tx, g.ty - p.ty)).toBeLessThan(10);
+  });
+});
+
+describe('campaigns & camp life', () => {
+  it('asker-topla raises an away group that later marches into camp', () => {
+    const s = siegeState();
+    const h = harness(s);
+    const akce0 = s.resources.akce;
+    const before = s.groups.length;
+    handleArmyCommand(s, { t: 'asker-topla', unit: 'sipahi', count: 1 }, h.ctx(0));
+    expect(s.groups.length).toBe(before + 1);
+    const g = s.groups[s.groups.length - 1];
+    expect(g.type).toBe('sipahi');
+    expect(g.status).toBe('uzakta');
+    expect(s.resources.akce).toBeLessThan(akce0);
+    expect(awayReason(s, g)).toMatch(/Yolda/);
+    s.time.day = (extraOf(s, g.id).enterDay ?? s.time.day) + 0.01;
+    h.tick();
+    expect(g.status === 'yuruyor' || g.status === 'bosta').toBe(true);
+    expect(awayReason(s, g)).toBeNull();
+  });
+
+  it('H7: akıncılar take the Thracian towns after the campaign', () => {
+    const s = newGame();
+    s.resources.erzak = 50000;
+    s.resources.akce = 20000;
+    const h = harness(s);
+    expect(trakyaStatus(s).ok).toBe(true);
+    handleArmyCommand(s, { t: 'ozel', feature: 'army', action: 'trakya' }, h.ctx(0));
+    const st = trakyaStatus(s);
+    expect(st.inProgress).toBe(true);
+    const sent = army(s).trakya!.groupIds.map((id) => s.groups.find((g) => g.id === id)!);
+    expect(sent.length).toBeGreaterThan(0);
+    for (const g of sent) expect(extraOf(s, g.id).campaign).toBe('trakya');
+    h.seconds((TRAKYA_DAYS + 0.5) * SEC_PER_DAY_HAZIRLIK);
+    expect(s.flags[FLAG.trakyaAlindi]).toBe(true);
+    expect(trakyaStatus(s).done).toBe(true);
+    for (const g of sent) expect(extraOf(s, g.id).campaign).toBe('edirne');
+  });
+
+  it('H6: the Mora campaign takes groups away under Turahan Bey', () => {
+    const s = newGame();
+    const h = harness(s);
+    s.flags[FLAG.moraSeferi] = true;
+    h.tick();
+    const mora = s.groups.filter((g) => extraOf(s, g.id).campaign === 'mora');
+    expect(mora.length).toBeGreaterThan(0);
+    for (const g of mora) {
+      expect(g.status).toBe('uzakta');
+      expect(g.commanderId).toBe('turahan');
+    }
+  });
+
+  it('the Sultan’s tour raises morale and has a cooldown', () => {
+    const s = siegeState();
+    s.morale = 50;
+    const h = harness(s);
+    expect(sultanVisitStatus(s).ok).toBe(true);
+    handleArmyCommand(s, { t: 'ozel', feature: 'army', action: 'padisah-ziyareti' }, h.ctx(0));
+    expect(s.morale).toBeGreaterThan(50);
+    const m1 = s.morale;
+    expect(sultanVisitStatus(s).ok).toBe(false);
+    handleArmyCommand(s, { t: 'ozel', feature: 'army', action: 'padisah-ziyareti' }, h.ctx(0));
+    expect(s.morale).toBe(m1);
   });
 });

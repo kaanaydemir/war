@@ -119,7 +119,7 @@ function MainMenu(props: { items: Item[]; focus: number; setFocus: (i: number) =
 function DifficultyPicker(props: { focus: number; setFocus: (i: number) => void; onPick: (i: number) => void; onBack: () => void; px: number }) {
   return (
     <section class="baslik-alt uk-panel-gece zorluk">
-      <header class="alt-baslik">
+      <header class="altsayfa-baslik">
         <button type="button" class="uk-geri" onClick={props.onBack} title="Geri (Esc)">
           <PxImg src={iconUrl('geri')} w={12} h={12} k={props.px} />
         </button>
@@ -172,7 +172,7 @@ function ScenarioGallery(props: { focus: number; setFocus: (i: number) => void; 
   const imgK = h >= 900 ? Math.max(2, props.px) : 2;
   return (
     <section class="baslik-alt uk-panel-gece sahneler">
-      <header class="alt-baslik">
+      <header class="altsayfa-baslik">
         <button type="button" class="uk-geri" onClick={props.onBack} title="Geri (Esc)">
           <PxImg src={iconUrl('geri')} w={12} h={12} k={props.px} />
         </button>
@@ -212,7 +212,7 @@ function ScenarioGallery(props: { focus: number; setFocus: (i: number) => void; 
             <EventImage imageKey={sel.image} k={imgK} />
           </div>
           <h3>{setup?.title ?? sel.name}</h3>
-          <div class="sahne-tarih num">{setup ? formatDate(setup.day) : ''}</div>
+          <div class="sahne-tarih">{setup ? formatDate(setup.day) : ''}</div>
           <p>{sel.desc}</p>
           <Btn kind="kirmizi" onClick={() => props.onPick(props.focus)}>
             Sahneyi oyna
@@ -229,8 +229,8 @@ function ScenarioGallery(props: { focus: number; setFocus: (i: number) => void; 
 export function SourcesPanel(props: { onBack?: () => void; px: number }) {
   const groups = groupSources(SOURCES);
   return (
-    <section class="baslik-alt uk-panel-gece kaynaklar">
-      <header class="alt-baslik">
+    <section class="baslik-alt uk-panel-gece kaynak-sayfa">
+      <header class="altsayfa-baslik">
         {props.onBack && (
           <button type="button" class="uk-geri" onClick={props.onBack} title="Geri (Esc)">
             <PxImg src={iconUrl('geri')} w={12} h={12} k={props.px} />

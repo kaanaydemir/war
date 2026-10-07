@@ -3,7 +3,7 @@ import { P, hex } from '../../art/palette';
 import type { RenderContext } from '../../core/feature';
 import type { GameState, SectionId } from '../../core/state';
 import { lightLevel } from '../atmosphere/api';
-import { sectionAt, sectionCenter, towerPositions } from './api';
+import { sectionAt, sectionCenter } from './api';
 import { LINES, SPANS } from './geom';
 import { CityRender } from './renderCity';
 import { LifeRender } from './renderLife';
@@ -24,6 +24,8 @@ export class FortRender {
   private sel: { key: string; img: Phaser.GameObjects.Image }[] = [];
   private selSec: SectionId | null = null;
   private selHover = false;
+  private selVer = -1;
+  private selAcc = 0;
   private hoverSec: SectionId | null = null;
   private hoverAcc = 0;
   private t = 0;
@@ -31,13 +33,9 @@ export class FortRender {
 
   constructor(private rc: RenderContext) {
     const state = rc.getState();
-    const t0 = performance.now();
     this.walls = new WallsRender(rc, state);
-    const t1 = performance.now();
     this.city = new CityRender(rc, (tx, ty) => this.walls.ground.get(tx, ty));
-    const t2 = performance.now();
     this.life = new LifeRender(rc, this.walls);
-    (window as unknown as { __fortTiming: unknown }).__fortTiming = { walls: t1 - t0, city: t2 - t1, pieces: this.walls.pieces.length, items: this.city.layout.items.length, ...this.city.timing };
 
     this.walls.onCrumble = (p, lvl) => this.crumble(p, lvl);
     rc.addPickable({
@@ -85,7 +83,6 @@ export class FortRender {
       }),
     );
     rc.scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.destroy());
-    void towerPositions;
   }
 
   private tileOf(line: 'kara' | 'deniz' | 'galata', t: number): [number, number] {
@@ -150,11 +147,16 @@ export class FortRender {
       sec = this.hoverSec;
       hover = true;
     }
-    if (sec !== this.selSec || hover !== this.selHover) {
-      for (const s of this.sel) s.img.destroy();
-      this.sel = [];
+    // rebuild when the target changes, or when its wall textures were re-rendered (crumble)
+    const ver = this.walls.texVersion;
+    this.selAcc += dt;
+    const stale = !!sec && ver !== this.selVer && this.selAcc > 0.5;
+    if (sec !== this.selSec || hover !== this.selHover || stale) {
+      this.selAcc = 0;
+      this.clearOutline();
       this.selSec = sec;
       this.selHover = hover;
+      this.selVer = ver;
       if (sec) this.buildOutline(sec);
     }
     if (this.sel.length) {
@@ -163,71 +165,90 @@ export class FortRender {
     }
   }
 
-  /** Gold outline around the union of a section's wall pieces (pixel-exact). */
+  /**
+   * Gold outline around the union of a section's wall pieces (pixel-exact). The union
+   * alpha mask is built once in world space, then each piece gets its own ring image at
+   * its own depth so the outline still y-sorts with whatever stands in front.
+   */
   private buildOutline(sec: SectionId): void {
     const tm = this.rc.scene.textures;
-    const pieces = this.walls.pieces.filter((p) => p.def.sec === sec && p.img);
-    const data = new Map<PieceDef, ImageData>();
-    for (const p of pieces) {
-      const tex = tm.get(p.def.key) as Phaser.Textures.CanvasTexture;
-      if (!tex || !tex.getContext) continue;
-      data.set(p.def, tex.getContext().getImageData(0, 0, p.def.w, p.def.h));
+    const items: { d: PieceDef; a: Uint8Array }[] = [];
+    let x0 = Infinity;
+    let y0 = Infinity;
+    let x1 = -Infinity;
+    let y1 = -Infinity;
+    for (const p of this.walls.pieces) {
+      if (p.def.sec !== sec || !p.img) continue;
+      const a = this.walls.alphaOf(p.def.key);
+      if (!a) continue;
+      const d = p.def;
+      items.push({ d, a });
+      x0 = Math.min(x0, d.ox - 1);
+      y0 = Math.min(y0, d.oy - 1);
+      x1 = Math.max(x1, d.ox + d.w + 1);
+      y1 = Math.max(y1, d.oy + d.h + 1);
     }
-    const solidAt = (wx: number, wy: number): boolean => {
-      for (const [d, img] of data) {
-        const x = wx - d.ox;
-        const y = wy - d.oy;
-        if (x < 0 || y < 0 || x >= d.w || y >= d.h) continue;
-        if (img.data[(y * d.w + x) * 4 + 3] >= 250) return true;
+    if (!items.length) return;
+    // union opacity mask of the whole section in world space
+    const MW = x1 - x0;
+    const MH = y1 - y0;
+    const mask = new Uint8Array(MW * MH);
+    for (const { d, a } of items)
+      for (let y = 0; y < d.h; y++) {
+        const row = (d.oy - y0 + y) * MW + (d.ox - x0);
+        for (let x = 0; x < d.w; x++) if (a[y * d.w + x]) mask[row + x] = 1;
       }
-      return false;
-    };
+    // neighbouring sections' masonry: no seam where the wall simply continues
+    for (const p of this.walls.pieces) {
+      const d = p.def;
+      if (d.sec === sec || !p.img || d.ox > x1 || d.ox + d.w < x0 || d.oy > y1 || d.oy + d.h < y0) continue;
+      const a = this.walls.alphaOf(d.key);
+      if (!a) continue;
+      for (let y = Math.max(0, y0 - d.oy); y < Math.min(d.h, y1 - d.oy); y++) {
+        const row = (d.oy - y0 + y) * MW + (d.ox - x0);
+        for (let x = Math.max(0, x0 - d.ox); x < Math.min(d.w, x1 - d.ox); x++) if (a[y * d.w + x] && !mask[row + x]) mask[row + x] = 2;
+      }
+    }
+    // one ring canvas for the section; each piece shows its own frame of it at its depth
+    const key = `fort/secim-${sec}`;
+    if (tm.exists(key)) tm.remove(key);
+    // Phaser's canvas textures use CPU-backed contexts: uploading them is cheap
+    const tex = tm.createCanvas(key, MW, MH)!;
+    const ctx = tex.getContext();
+    const out = ctx.createImageData(MW, MH);
     const gold = hex(P.gold[5]);
     const goldD = hex(P.gold[3]);
-    for (const [d, img] of data) {
-      const key = `${d.key}-sel`;
-      const cv = document.createElement('canvas');
-      cv.width = d.w + 2;
-      cv.height = d.h + 2;
-      const ctx = cv.getContext('2d')!;
-      const out = ctx.createImageData(d.w + 2, d.h + 2);
-      for (let y = -1; y <= d.h; y++)
-        for (let x = -1; x <= d.w; x++) {
-          const inside = x >= 0 && y >= 0 && x < d.w && y < d.h && img.data[(y * d.w + x) * 4 + 3] >= 250;
-          if (inside) continue;
-          const wx = d.ox + x;
-          const wy = d.oy + y;
-          // ring pixel: next to this piece's structure, and not inside a sibling piece
-          let edge = false;
-          for (const [dx, dy] of [
-            [1, 0],
-            [-1, 0],
-            [0, 1],
-            [0, -1],
-          ]) {
-            const nx = x + dx;
-            const ny = y + dy;
-            if (nx >= 0 && ny >= 0 && nx < d.w && ny < d.h && img.data[(ny * d.w + nx) * 4 + 3] >= 250) edge = true;
-          }
-          if (!edge || solidAt(wx, wy)) continue;
-          const k = ((y + 1) * (d.w + 2) + (x + 1)) * 4;
-          const c = (x + y) % 3 === 0 ? goldD : gold;
-          out.data[k] = (c >> 16) & 255;
-          out.data[k + 1] = (c >> 8) & 255;
-          out.data[k + 2] = c & 255;
-          out.data[k + 3] = 255;
-        }
-      ctx.putImageData(out, 0, 0);
-      if (tm.exists(key)) tm.remove(key);
-      tm.addCanvas(key, cv);
-      const im = this.rc.scene.add.image(d.ox - 1, d.oy - 1, key).setOrigin(0, 0).setDepth(d.depth + 0.8);
+    for (let y = 1; y < MH - 1; y++)
+      for (let x = 1; x < MW - 1; x++) {
+        const i = y * MW + x;
+        if (mask[i] || !(mask[i - 1] === 1 || mask[i + 1] === 1 || mask[i - MW] === 1 || mask[i + MW] === 1)) continue;
+        const c = (x + y) % 3 === 0 ? goldD : gold;
+        out.data[i * 4] = (c >> 16) & 255;
+        out.data[i * 4 + 1] = (c >> 8) & 255;
+        out.data[i * 4 + 2] = c & 255;
+        out.data[i * 4 + 3] = 255;
+      }
+    ctx.putImageData(out, 0, 0);
+    tex.refresh();
+    items.forEach(({ d }, k) => {
+      tex.add(k, 0, d.ox - 1 - x0, d.oy - 1 - y0, d.w + 2, d.h + 2);
+      const im = this.rc.scene.add.image(d.ox - 1, d.oy - 1, key, k).setOrigin(0, 0).setDepth(d.depth + 0.8);
       this.sel.push({ key, img: im });
+    });
+  }
+
+  private clearOutline(): void {
+    const tm = this.rc.scene.textures;
+    for (const s of this.sel) {
+      s.img.destroy();
+      if (tm.exists(s.key)) tm.remove(s.key);
     }
+    this.sel = [];
   }
 
   destroy(): void {
     for (const o of this.offs) o();
-    for (const s of this.sel) s.img.destroy();
+    this.clearOutline();
     this.walls.destroy();
     this.city.destroy();
     this.life.destroy();

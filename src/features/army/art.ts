@@ -494,18 +494,23 @@ export function drawCamelFrame(p: PixelCanvas, f: number): void {
 
 // ───────────────────────────── props ─────────────────────────────
 
+/** Ladder sheets are wide enough for the toppled ladder; the foot sits at x = ladderBaseX. */
+export const ladderBaseX = (len: number): number => len + 4;
+export const ladderW = (len: number): number => len * 2 + 8;
+export const LADDER = { u: { len: 24, h: 30 }, r: { len: 23, h: 28 } } as const;
+
 /**
  * Scaling ladder: frame 0 leaning against the wall, 1–2 pushed off and toppling,
  * 3 lying. Variant 'u' leans slightly (wall straight ahead), 'r' leans to the right.
  */
 export function drawLadderFrame(p: PixelCanvas, f: number, lean: 'u' | 'r', len: number): void {
-  const bx = lean === 'u' ? 7 : 4;
+  const bx = ladderBaseX(len);
   const by = p.h - 2;
   const angles = lean === 'u' ? [82, 98, 125, 168] : [62, 82, 115, 165];
   const a = (angles[f] * Math.PI) / 180;
   const dx = Math.cos(a);
   const dy = -Math.sin(a);
-  const L = f === 3 ? Math.min(len, p.w - 4) : len;
+  const L = len;
   const nx = -dy;
   const ny = dx;
   for (let s = 0; s <= L; s++) {
@@ -530,7 +535,9 @@ export function drawRingFrame(p: PixelCanvas, rx: number, f: number): void {
     const x = Math.round(cx + Math.cos(t) * rx - 0.5);
     const y = Math.round(cy + Math.sin(t) * ry - 0.5);
     const dash = Math.floor((i + f * 2) / 3) % 2 === 0;
-    p.set(x, y, dash ? P.gold[5] : P.gold[2]);
+    // soft dark drop shadow under the ring so it reads on bright grass and snow
+    if (p.alphaAt(x, y + 1) === 0) p.set(x, y + 1, P.outline[0], 0.45);
+    p.set(x, y, dash ? P.gold[6] : P.gold[3]);
   }
 }
 
@@ -598,56 +605,234 @@ function sub(p: PixelCanvas, ox: number, oy: number): PixelCanvas {
 }
 
 /** Commander portrait 32×32 (UI). */
-export function drawPortrait(p: PixelCanvas, id: string): void {
-  const bg = id === 'fatih' ? P.red : id === 'halil' || id === 'aksemseddin' ? P.green : P.blue;
-  for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) p.set(x, y, x === 0 || y === 0 || x === 31 || y === 31 ? P.gold[3] : y < 16 ? bg[2] : bg[1]);
-  const skin = [P.skin[2], P.skin[3], P.skin[4], P.skin[5]];
-  const kaft = id === 'fatih' ? P.gold : id === 'zaganos' || id === 'halil' ? P.green : id === 'ulubatli' ? P.blue : id === 'karaca' ? P.red : P.blue;
-  // shoulders & kaftan
-  for (let y = 22; y < 31; y++)
-    for (let x = 5; x < 27; x++) {
-      const d = Math.abs(x - 16) - (y - 22) * 1.3;
-      if (d > 8) continue;
-      p.set(x, y, x < 12 ? kaft[4] : x > 21 ? kaft[2] : kaft[3]);
-    }
-  for (let y = 22; y < 31; y++) p.set(16, y, P.gold[5]);
-  // face
-  for (let y = 11; y < 22; y++)
-    for (let x = 11; x < 21; x++) {
-      const dx = (x - 15.5) / 5;
-      const dy = (y - 16) / 6;
-      if (dx * dx + dy * dy > 1) continue;
-      p.set(x, y, skin[x < 14 ? 3 : x > 18 ? 1 : 2]);
-    }
-  p.set(13, 15, P.outline[1]);
-  p.set(18, 15, P.outline[1]);
-  p.set(13, 14, P.dirt[1]);
-  p.set(18, 14, P.dirt[1]);
-  p.set(16, 17, skin[1]);
-  // beard
-  const beard = id === 'halil' || id === 'aksemseddin' ? P.cloth[3] : id === 'fatih' ? P.dirt[2] : P.outline[2];
-  for (let y = 18; y < 23; y++) for (let x = 12; x < 20; x++) if (y > 19 || x < 13 || x > 18) if ((x - 16) ** 2 / 16 + (y - 18) ** 2 / 25 <= 1) p.set(x, y, beard);
-  p.set(14, 19, beard);
-  p.set(15, 19, beard);
-  p.set(17, 19, beard);
-  p.set(18, 19, beard);
-  // headgear
-  if (id === 'ulubatli') {
-    for (let y = 2; y < 12; y++) for (let x = 12; x < 20; x++) p.set(x - (y < 6 ? 1 : 0), y, x < 14 ? P.turban[3] : x > 18 ? P.turban[1] : P.turban[2]);
-    p.set(18, 10, P.gold[5]);
-    p.set(18, 9, P.gold[4]);
-  } else {
-    const cap = id === 'fatih' ? P.red[4] : id === 'aksemseddin' ? P.green[3] : P.red[3];
-    for (let y = 3; y < 8; y++) for (let x = 13; x < 19; x++) p.set(x, y, cap);
-    for (let y = 6; y < 12; y++)
-      for (let x = 7; x < 25; x++) {
-        const dx = (x - 16) / 9;
-        const dy = (y - 9) / 3.2;
-        if (dx * dx + dy * dy > 1) continue;
-        p.set(x, y, (x + y) % 4 === 0 ? P.turban[1] : x < 12 ? P.turban[3] : P.turban[2]);
-      }
+interface PortraitSpec {
+  bg: readonly string[];
+  kaftan: readonly string[];
+  under: string;
+  head: 'kavuk' | 'bork' | 'kalpak' | 'sikke' | 'sarik';
+  cap: string;
+  beard: string;
+  /** 0 mustache only, 1 short, 2 full, 3 long. */
+  beardLen: number;
+  age: 0 | 1 | 2;
+  fur?: boolean;
+  plume?: boolean;
+  skin?: number;
+}
+
+const PORTRAITS: Record<string, PortraitSpec> = {
+  // the young Sultan (21): short dark beard, great white turban with a red taj and a jewelled sorguç, gold kaftan with sable
+  fatih: { bg: P.red, kaftan: P.gold, under: P.red[4], head: 'kavuk', cap: P.red[4], beard: P.dirt[2], beardLen: 1, age: 0, fur: true, plume: true },
+  // the old grand vizier of Murad II: long grey beard, peace party green
+  halil: { bg: P.green, kaftan: P.green, under: P.cloth[4], head: 'kavuk', cap: P.green[3], beard: P.cloth[3], beardLen: 3, age: 2, fur: true },
+  // the war party: black beard, crimson
+  zaganos: { bg: P.purple, kaftan: P.red, under: P.gold[4], head: 'kavuk', cap: P.red[3], beard: P.outline[2], beardLen: 2, age: 1, fur: true },
+  saruca: { bg: P.blue, kaftan: P.blue, under: P.gold[4], head: 'kavuk', cap: P.blue[3], beard: P.dirt[3], beardLen: 2, age: 1 },
+  karaca: { bg: P.red, kaftan: P.red, under: P.cloth[4], head: 'kavuk', cap: P.red[4], beard: P.outline[2], beardLen: 2, age: 1, skin: -1 },
+  ishak: { bg: P.green, kaftan: P.blue, under: P.green[4], head: 'kavuk', cap: P.green[3], beard: P.stone[4], beardLen: 2, age: 1 },
+  mahmud: { bg: P.purple, kaftan: P.purple, under: P.gold[5], head: 'kavuk', cap: P.purple[3], beard: P.dirt[2], beardLen: 1, age: 0 },
+  baltaoglu: { bg: P.water, kaftan: P.blue, under: P.cloth[4], head: 'sarik', cap: P.red[4], beard: P.dirt[1], beardLen: 2, age: 1, skin: -1 },
+  hamza: { bg: P.water, kaftan: P.green, under: P.cloth[4], head: 'sarik', cap: P.green[3], beard: P.dirt[3], beardLen: 1, age: 0 },
+  // the old march lord of Thessaly: fur kalpak with a crane feather, grey beard
+  turahan: { bg: P.dryGrass, kaftan: P.wood, under: P.red[4], head: 'kalpak', cap: P.dirt[2], beard: P.stone[5], beardLen: 2, age: 2 },
+  // Bayrami sheikh: tall felt cap wound with a green turban, long white beard
+  aksemseddin: { bg: P.green, kaftan: P.sand, under: P.cloth[4], head: 'sikke', cap: P.sand[3], beard: P.cloth[4], beardLen: 3, age: 2 },
+  // the giant janissary: white börk with the brass spoon-holder, big moustache
+  ulubatli: { bg: P.blue, kaftan: P.blue, under: P.red[4], head: 'bork', cap: P.gold[5], beard: P.outline[2], beardLen: 0, age: 0, skin: -1 },
+};
+
+/** One step darker / lighter along whichever palette ramp contains the colour. */
+function rampStep(c: string, d: number): string {
+  for (const r of Object.values(P) as unknown[]) {
+    if (!Array.isArray(r)) continue;
+    const i = (r as string[]).indexOf(c);
+    if (i >= 0) return (r as string[])[Math.max(0, Math.min(r.length - 1, i + d))];
   }
-  p.outline(P.outline[0]);
+  return c;
+}
+const shade = (c: string) => rampStep(c, -1);
+const lift = (c: string) => rampStep(c, 1);
+
+export function drawPortrait(p: PixelCanvas, id: string): void {
+  const sp = PORTRAITS[id] ?? PORTRAITS.saruca;
+  const bg = sp.bg;
+  const n = bg.length;
+  // background: dithered vertical gradient with a lit arch behind the head
+  for (let y = 0; y < 32; y++)
+    for (let x = 0; x < 32; x++) {
+      const t = y / 31;
+      const lo = bg[Math.max(0, Math.floor(n * 0.25))];
+      const hi = bg[Math.max(0, Math.floor(n * 0.45))];
+      const arch = (x - 15.5) ** 2 / 110 + (y - 14) ** 2 / 170 < 1 && y > 2;
+      const thr = ((x * 7 + y * 13) % 16) / 16;
+      let c = t < 0.55 + (thr - 0.5) * 0.25 ? hi : lo;
+      if (arch) c = bg[Math.min(n - 1, Math.floor(n * 0.6))];
+      p.set(x, y, c);
+    }
+  const skin = [P.skin[2], P.skin[3], P.skin[4], P.skin[5]].map((_, i) => P.skin[Math.max(0, Math.min(5, i + 2 + (sp.skin ?? 0)))]);
+  const k = sp.kaftan;
+  const kl = k[Math.min(k.length - 1, 4)];
+  const km = k[Math.min(k.length - 1, 3)];
+  const kd = k[Math.min(k.length - 1, 2)];
+  const kdd = k[Math.min(k.length - 1, 1)];
+  // shoulders & kaftan (lit from the upper-left)
+  for (let y = 22; y < 31; y++)
+    for (let x = 3; x < 29; x++) {
+      const d = Math.abs(x - 15.5) - (y - 22) * 1.6 - 5;
+      if (d > 4) continue;
+      p.set(x, y, x < 10 ? kl : x > 22 ? kdd : x > 18 ? kd : km);
+    }
+  // V opening with the inner garment, gold buttons (çaprast) on the kaftan
+  for (let y = 22; y < 31; y++) {
+    const w = Math.max(0, 3 - Math.floor((y - 22) / 3));
+    for (let x = 16 - w; x <= 15 + w; x++) p.set(x, y, sp.under);
+  }
+  for (let y = 25; y < 31; y += 2) {
+    p.set(13, y, P.gold[5]);
+    p.set(18, y, P.gold[3]);
+  }
+  if (sp.fur) {
+    // sable collar (kürk)
+    for (let y = 21; y < 31; y++) {
+      const off = Math.floor((y - 21) / 2);
+      for (const x of [10 - off, 11 - off, 12 - off, 19 + off, 20 + off, 21 + off])
+        p.set(x, y, (x * 5 + y * 3) % 7 === 0 ? P.dirt[5] : x < 16 ? P.dirt[4] : P.dirt[3]);
+    }
+  }
+  // neck
+  for (let y = 20; y < 23; y++) for (let x = 14; x < 18; x++) p.set(x, y, x < 15 ? skin[2] : skin[1]);
+  // face
+  const fx = 15.5;
+  for (let y = 10; y < 22; y++)
+    for (let x = 10; x < 22; x++) {
+      const dx = (x - fx) / 5;
+      const dy = (y - 15.5) / 6;
+      if (dx * dx + dy * dy > 1) continue;
+      const lit = x < 14 ? 3 : x > 18 ? 1 : 2;
+      p.set(x, y, skin[lit]);
+    }
+  // ear
+  p.set(10, 15, skin[2]);
+  p.set(10, 16, skin[1]);
+  // brows, eyes, nose
+  const brow = sp.age === 2 ? P.cloth[3] : P.outline[2];
+  p.set(12, 13, brow);
+  p.set(13, 13, brow);
+  p.set(17, 13, brow);
+  p.set(18, 13, brow);
+  p.set(13, 14, P.outline[1]);
+  p.set(18, 14, P.outline[1]);
+  p.set(12, 14, P.cloth[4]);
+  p.set(17, 14, P.cloth[4]);
+  p.set(16, 15, skin[1]);
+  p.set(16, 16, skin[1]);
+  p.set(16, 17, skin[0]);
+  p.set(15, 17, skin[1]);
+  if (id === 'fatih') {
+    // the hooked nose of the Sultan's portraits
+    p.set(17, 15, skin[1]);
+    p.set(17, 16, skin[0]);
+  }
+  if (sp.age >= 1) {
+    p.set(19, 15, skin[1]);
+    p.set(19, 16, skin[0]);
+  }
+  if (sp.age >= 2) {
+    p.set(12, 16, skin[1]);
+    p.set(14, 12, skin[1]);
+    p.set(17, 12, skin[1]);
+  }
+  // moustache and beard
+  const b = sp.beard;
+  for (const x of [13, 14, 15, 17, 18, 19]) p.set(x, 18, b);
+  if (sp.beardLen === 0) {
+    p.set(12, 19, b);
+    p.set(20, 19, b);
+  }
+  if (sp.beardLen >= 1) {
+    const len = sp.beardLen === 1 ? 2.2 : sp.beardLen === 2 ? 3.6 : 6.5;
+    for (let y = 17; y < 31; y++)
+      for (let x = 10; x < 22; x++) {
+        const dx = (x - fx) / (5 - Math.max(0, y - 20) * (sp.beardLen === 3 ? 0.35 : 0.6));
+        const dy = (y - 19) / len;
+        if (y < 19 && (x > 11 && x < 20)) continue;
+        if (dx * dx + dy * dy > 1 || y < 17) continue;
+        p.set(x, y, x > 18 || y > 19 + len * 0.8 ? shade(b) : x < 12 ? lift(b) : b);
+      }
+    for (let y = 21; y < 19 + len; y += 2) p.set(15 + (y % 4 === 1 ? 1 : 0), y, shade(b));
+    p.set(15, 19, skin[0]);
+    p.set(16, 19, skin[0]);
+  }
+  // headgear
+  const T = P.turban;
+  if (sp.head === 'bork') {
+    // tall white börk leaning back, brass kaşıklık at the front
+    for (let y = 1; y < 12; y++)
+      for (let x = 11; x < 21; x++) {
+        const lean = Math.floor((12 - y) / 4);
+        const x0 = 11 - lean;
+        const x1 = 20 - lean - (y < 5 ? 2 : 0);
+        if (x < x0 || x > x1) continue;
+        p.set(x, y, x < x0 + 2 ? T[3] : x > x1 - 2 ? T[1] : T[2]);
+      }
+    for (let x = 10; x < 22; x++) p.set(x, 11, x < 13 ? T[2] : P.turban[1]);
+    for (let y = 6; y < 11; y++) p.set(18, y, y === 6 ? P.gold[6] : P.gold[4]);
+    p.set(19, 7, P.gold[3]);
+  } else if (sp.head === 'kalpak') {
+    for (let y = 5; y < 12; y++)
+      for (let x = 9; x < 23; x++) {
+        const dx = (x - 15.5) / 7;
+        const dy = (y - 10) / 5;
+        if (dx * dx + dy * dy > 1) continue;
+        p.set(x, y, (x * 3 + y * 5) % 7 === 0 ? P.dirt[4] : x < 13 ? P.dirt[3] : P.dirt[2]);
+      }
+    // crane feather
+    for (let y = 1; y < 7; y++) p.set(19 + Math.floor((7 - y) / 3), y, y < 3 ? P.cloth[5] : P.cloth[4]);
+    p.set(19, 7, P.gold[5]);
+  } else if (sp.head === 'sikke') {
+    for (let y = 1; y < 9; y++)
+      for (let x = 12; x < 20; x++) {
+        if ((y < 3 && (x < 13 || x > 18)) || (y < 2 && (x < 14 || x > 17))) continue;
+        p.set(x, y, x < 14 ? P.sand[4] : x > 17 ? P.sand[2] : P.sand[3]);
+      }
+    for (let y = 6; y < 12; y++)
+      for (let x = 9; x < 23; x++) {
+        const dx = (x - 16) / 7;
+        const dy = (y - 9) / 2.8;
+        if (dx * dx + dy * dy > 1) continue;
+        p.set(x, y, (x + y) % 3 === 0 ? P.green[2] : x < 13 ? P.green[4] : P.green[3]);
+      }
+  } else {
+    const big = sp.head === 'kavuk';
+    // taj (cap) rising out of the turban
+    for (let y = big ? 1 : 3; y < 8; y++) for (let x = 13; x < 19; x++) p.set(x, y, x < 15 ? sp.cap : x > 17 ? P.outline[2] : sp.cap);
+    p.set(13, big ? 1 : 3, P.cloth[3]);
+    // great white turban: wrapped folds, lit left
+    const rx = big ? 10 : 8;
+    const ry = big ? 3.6 : 3;
+    for (let y = 4; y < 13; y++)
+      for (let x = 4; x < 28; x++) {
+        const dx = (x - 16) / rx;
+        const dy = (y - 9) / ry;
+        if (dx * dx + dy * dy > 1) continue;
+        const fold = (x - y + 40) % 4 === 0;
+        const edge = dx * dx + dy * dy > 0.72;
+        p.set(x, y, fold ? T[1] : edge && y > 9 ? T[1] : x < 11 || (y < 7 && x < 18) ? T[3] : x > 21 ? T[1] : T[2]);
+      }
+    if (sp.plume) {
+      // jewelled sorguç with a heron plume
+      p.set(17, 6, P.red[5]);
+      p.set(17, 7, P.gold[5]);
+      p.set(18, 5, P.gold[6]);
+      for (let y = 0; y < 5; y++) p.set(18 + (y < 2 ? 1 : 0), y, P.cloth[5]);
+    }
+  }
+  // frame
+  for (let i = 0; i < 32; i++) {
+    for (const [x, y] of [[i, 0], [i, 31], [0, i], [31, i]] as [number, number][]) p.set(x, y, P.gold[3]);
+    for (const [x, y] of [[i, 1], [i, 30], [1, i], [30, i]] as [number, number][]) if (i > 0 && i < 31) p.set(x, y, P.outline[1]);
+  }
+  for (const [x, y] of [[0, 0], [31, 0], [0, 31], [31, 31]] as [number, number][]) p.set(x, y, P.gold[5]);
 }
 
 // ───────────────────────────── registration ─────────────────────────────
@@ -671,19 +856,22 @@ export function generateArmyTextures(gen: TextureGen): void {
   for (const id of Object.keys(COMMANDER_KITS)) gen.sheet(`army/pasa-${id}`, MNT.w, MNT.h, CMD.n, (p, f) => drawCommanderFrame(p, id, f));
   gen.sheet('army/deve', MNT.w, MNT.h, 4, (p, f) => drawCamelFrame(p, f));
   // props
-  gen.sheet('army/merdiven-u', 14, 30, 4, (p, f) => drawLadderFrame(p, f, 'u', 24));
-  gen.sheet('army/merdiven-r', 22, 28, 4, (p, f) => drawLadderFrame(p, f, 'r', 23));
+  for (const lean of ['u', 'r'] as const) {
+    const L = LADDER[lean];
+    gen.sheet(`army/merdiven-${lean}`, ladderW(L.len), L.h, 4, (p, f) => drawLadderFrame(p, f, lean, L.len));
+  }
   [12, 18, 26, 36].forEach((rx, i) => gen.sheet(`army/halka-${i}`, rx * 2 + 4, rx + 4, 3, (p, f) => drawRingFrame(p, rx, f)));
   gen.sheet('army/hedef', 12, 16, 4, (p, f) => drawMarkerFrame(p, f, false));
   gen.sheet('army/hedef-hucum', 12, 16, 4, (p, f) => drawMarkerFrame(p, f, true));
   gen.sheet('army/mesale', 5, 8, 3, (p, f) => drawTorchFrame(p, f));
   gen.sheet('army/burc-sancak', 22, 40, 4, (p, f) => drawTowerBannerFrame(p, f));
   gen.canvas('army/px', 1, 1, (p) => p.set(0, 0, '#ffffff'));
-  gen.canvas('army/nokta', 2, 2, (p) => {
-    p.set(0, 0, P.gold[5]);
-    p.set(1, 0, P.gold[4]);
-    p.set(0, 1, P.gold[3]);
-    p.set(1, 1, P.gold[2]);
+  gen.canvas('army/nokta', 4, 4, (p) => {
+    p.set(1, 1, P.gold[6]);
+    p.set(2, 1, P.gold[5]);
+    p.set(1, 2, P.gold[4]);
+    p.set(2, 2, P.gold[3]);
+    p.outline(P.outline[0]);
   });
   for (const t of ['yeniceri', 'azap', 'sipahi', 'basibozuk', 'akinci', 'topcu', 'lagimci', 'mehter'] as UnitTypeId[]) gen.canvas(`army/ikon-${t}`, 16, 16, (p) => drawIcon(p, t));
   for (const id of PORTRAIT_IDS) gen.canvas(`army/portre-${id}`, 32, 32, (p) => drawPortrait(p, id));

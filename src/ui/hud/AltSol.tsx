@@ -5,6 +5,7 @@ import { useEffect, useState } from 'preact/hooks';
 import type { BuildingCategory } from '../../core/defs';
 import { RESOURCE_ADI, RESOURCE_IDS } from '../../core/state';
 import { store } from '../../core/store';
+import { workforceInfo } from '../../features/economy/api';
 import { fmtCompact, fmtInt } from './format';
 import { Gunluk } from './Bildirimler';
 import { buildMenuItems, CATEGORY_ADI, safe, type BuildItem } from './logic';
@@ -125,6 +126,44 @@ function YapiKarti({ it }: { it: BuildItem }) {
   );
 }
 
+function IsciOzet() {
+  const s = store.state!;
+  const wf = safe(() => workforceInfo(s), null);
+  const idle = wf ? wf.idle : Math.max(0, s.workforce.total - s.workforce.assigned);
+  return (
+    <Ipucu
+      icerik={
+        <div class="ipucu-icerik">
+          <div class="ipucu-baslik">Amele</div>
+          <div class="ipucu-tablo">
+            <span>Toplam</span>
+            <b class="num">{fmtInt(s.workforce.total)}</b>
+            <span>Çalışan</span>
+            <b class="num">{fmtInt(s.workforce.assigned)}</b>
+            {wf && wf.away > 0 && (
+              <>
+                <span>Edirne yolunda</span>
+                <b class="num">{fmtInt(wf.away)}</b>
+              </>
+            )}
+            {wf && (
+              <>
+                <span>Barınak</span>
+                <b class={`num ${wf.overcrowded ? 'azaldi' : ''}`}>{fmtInt(wf.housing)}</b>
+              </>
+            )}
+          </div>
+          {wf?.overcrowded && <div class="ipucu-metin kirmizi-yazi">Çadırlar yetmiyor: kalabalık amele yavaş çalışır.</div>}
+        </div>
+      }
+    >
+      <span>
+        İşçi: <b class={`num ${wf?.overcrowded ? 'azaldi' : ''}`}>{fmtInt(idle)}</b> boşta / <span class="num">{fmtInt(s.workforce.total)}</span>
+      </span>
+    </Ipucu>
+  );
+}
+
 const KATEGORILER: BuildingCategory[] = ['uretim', 'askeri', 'ordugah', 'ozel'];
 
 function InsaMenusu() {
@@ -142,7 +181,7 @@ function InsaMenusu() {
         <Ikon ad="insa" />
         <span class="baslik-yazi">İnşa</span>
         <span class="soluk kucuk">
-          İşçi: <b class="num">{Math.max(0, s.workforce.total - s.workforce.assigned)}</b> boşta / <span class="num">{s.workforce.total}</span>
+          <IsciOzet />
         </span>
         <KapatBtn onClick={() => store.setUi({ panel: null })} />
       </div>

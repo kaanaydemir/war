@@ -49,6 +49,8 @@ export const hud = {
   dawn: null as { resume: 0 | 1 | 2 | 3 } | null,
   /** Section hovered while in target mode (for the banner). */
   targetHover: null as SectionId | null,
+  /** Speed to restore once the event card that holds the pause closes (dawn report closed first). */
+  resumeAfterCard: null as 0 | 1 | 2 | 3 | null,
 };
 
 const hudListeners = new Set<() => void>();

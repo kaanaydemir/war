@@ -5,20 +5,26 @@
 import type { ComponentChildren } from 'preact';
 import type { PickResult } from '../../core/feature';
 import { FLAG } from '../../core/flags';
-import { RESOURCE_IDS, type Building, type Cannon, type GameState, type Mine, type Ship, type UnitGroup, type WallSection } from '../../core/state';
+import { RESOURCE_ADI, RESOURCE_IDS, type Building, type Cannon, type GameState, type Mine, type Ship, type UnitGroup, type WallSection } from '../../core/state';
 import { store } from '../../core/store';
 import { SECTION_BY_ID } from '../../data/sections';
 import { COMMANDERS, UNIT_TYPES } from '../../features/army/data';
 import { cannonStatusText, cannonsTargeting } from '../../features/artillery/api';
 import { CANNON_TYPES, STATUS_ADI } from '../../features/artillery/data';
-import { buildingDef, hisarStatus, labourFactor, productionBonus, staffRate } from '../../features/economy/api';
-import { shipName } from '../../features/navy/api';
+import { buildingDef, edirneActionCheck, hisarStatus, labourFactor, productionBonus, staffRate, workforceInfo } from '../../features/economy/api';
+import { navyCommander, shipName } from '../../features/navy/api';
 import { SHIP_TYPES } from '../../features/navy/data';
 import { fmtCompact, fmtInt, fmtPct } from './format';
 import { startTarget } from './Katmanlar';
 import { GROUP_STATUS_ADI, HUD_ORDERS, MINE_STATUS_ADI, ORDER_ADI, pickGroupFor, readyCannonsInRange, safe, SHIP_STATUS_ADI, SIDE_ADI, unitTypeName, type HudOrder } from './logic';
-import { opt } from './opt';
+import { opt, type TowerV } from './opt';
 import { askConfirm, Btn, Cubuk, Ikon, Ipucu, TexIkon } from './ui';
+
+function fmtCost(c: Partial<Record<string, number>>): string {
+  return RESOURCE_IDS.filter((r) => (c[r] ?? 0) > 0)
+    .map((r) => `${fmtInt(c[r] ?? 0)} ${RESOURCE_ADI[r].toLocaleLowerCase('tr')}`)
+    .join(' · ');
+}
 
 function Satir({ ad, children, genis }: { ad: string; children: ComponentChildren; genis?: boolean }) {
   return (
@@ -29,12 +35,12 @@ function Satir({ ad, children, genis }: { ad: string; children: ComponentChildre
   );
 }
 
-function BarSatir({ ad, deger, max = 1, tur, metin }: { ad: string; deger: number; max?: number; tur: string; metin?: string }) {
+function BarSatir({ ad, deger, max = 1, tur, metin, isaret }: { ad: string; deger: number; max?: number; tur: string; metin?: string; isaret?: number }) {
   const f = max > 0 ? deger / max : 0;
   return (
     <div class="satir">
       <span class="satir-ad">{ad}</span>
-      <Cubuk deger={f} tur={tur} />
+      <Cubuk deger={f} tur={tur} isaret={isaret} />
       <span class="satir-sayi num">{metin ?? fmtPct(f)}</span>
     </div>
   );
@@ -282,7 +288,7 @@ function YapiPaneli({ s, b }: { s: GameState; b: Building }) {
   const step = Math.max(1, Math.round(def.workersMax / 8));
   const hisar = b.type === 'rumeli-hisari' ? safe(() => hisarStatus(s), null) : null;
   const setW = (w: number) => store.dispatch({ t: 'isci-ata', buildingId: b.id, workers: Math.max(0, Math.min(def.workersMax, w)) });
-  const free = Math.max(0, s.workforce.total - s.workforce.assigned);
+  const free = safe(() => workforceInfo(s).idle, Math.max(0, s.workforce.total - s.workforce.assigned));
   return (
     <>
       <Ust ikon={<TexIkon tex={def.icon} yedek="insa" max={20} />} ad={def.name} alt={b.built ? 'Tamamlandı' : 'İnşa ediliyor'} sag={!b.built ? <span class="num buyuk-yuzde">{fmtPct(b.progress)}</span> : undefined} />
@@ -293,13 +299,36 @@ function YapiPaneli({ s, b }: { s: GameState; b: Building }) {
             {hisar.stageName} · <b class="num">{fmtPct(hisar.progress)}</b>
             {hisar.ihsanActive && <span class="etiket altin-etiket">İhsan</span>}
           </div>
-          {hisar.parts.map((p) => (
-            <div key={p.id} class="satir">
-              <span class="satir-ad">{p.name}</span>
-              <Cubuk deger={p.progress} tur={p.progress >= 1 ? 'yesil' : 'altin'} />
-              <span class="satir-sayi num">{fmtPct(p.progress)}</span>
-            </div>
-          ))}
+          {hisar.parts.map((p) => {
+            const kule = HISAR_KULE.includes(p.id);
+            const on = hisar.priority === p.id;
+            return (
+              <div key={p.id} class={`satir hisar-parca ${on ? 'oncelikli' : ''}`}>
+                <span class="satir-ad" title={p.pasha}>
+                  {p.name}
+                </span>
+                <Cubuk deger={p.progress} tur={p.progress >= 1 ? 'yesil' : on ? 'kizgin' : 'altin'} />
+                <span class="satir-sayi num">{fmtPct(p.progress)}</span>
+                {kule && !hisar.done && p.progress < 1 && (
+                  <Btn
+                    tur={on ? 'altin' : 'kagit'}
+                    class="kare-btn oncelik-btn"
+                    aktif={on}
+                    ipucu={
+                      <div class="ipucu-icerik">
+                        {on ? 'Önceliği kaldır' : `${p.name} önce bitsin: amele buraya yığılır.`}
+                        {p.pasha && <div class="soluk">Yapımı üstlenen: {p.pasha}</div>}
+                      </div>
+                    }
+                    onClick={() => store.dispatch({ t: 'ozel', feature: 'economy', action: 'hisar-oncelik', payload: { kule: on ? null : p.id } })}
+                  >
+                    <Ikon ad="sancak-kucuk" />
+                  </Btn>
+                )}
+              </div>
+            );
+          })}
+          {!hisar.done && <HisarIhsan s={s} active={hisar.ihsanActive} />}
         </div>
       )}
       {def.workersMax > 0 && !hisar && (
@@ -316,6 +345,11 @@ function YapiPaneli({ s, b }: { s: GameState; b: Building }) {
             +
           </Btn>
           <span class="soluk kucuk">boşta {fmtInt(free)}</span>
+          {b.data.manual === true && (
+            <Btn tur="kagit" class="kucuk-btn" ipucu={<div class="ipucu-icerik">İşçi sayısını yeniden kâhyaya bırak (otomatik dağıtım).</div>} onClick={() => store.dispatch({ t: 'isci-ata', buildingId: b.id, workers: -1 })}>
+              Oto
+            </Btn>
+          )}
         </div>
       )}
       {b.built && (def.produces || def.consumes) && (
@@ -361,6 +395,81 @@ function YapiPaneli({ s, b }: { s: GameState; b: Building }) {
   );
 }
 
+const HISAR_KULE: string[] = ['saruca', 'halil', 'zaganos'];
+
+function HisarIhsan({ s, active }: { s: GameState; active: boolean }) {
+  const chk = safe(() => edirneActionCheck(s, 'hisar-ihsan'), { ok: false, reason: '', cost: {} });
+  return (
+    <div class="emirler">
+      <Btn
+        tur="altin"
+        class="emir-btn"
+        disabled={active || !chk.ok}
+        sesi="onay"
+        ipucu={
+          <div class="ipucu-icerik genis">
+            <div class="ipucu-baslik">Paşalara ihsan vaadi</div>
+            <div class="ipucu-metin">Sultan, kulesini önce bitiren paşaya ihsan vaat eder; Saruca, Halil ve Zağanos paşalar yarışa girer, iş hızlanır.</div>
+            {!chk.ok && chk.reason && <div class="ipucu-metin kirmizi-yazi">{chk.reason}</div>}
+          </div>
+        }
+        onClick={() => store.dispatch({ t: 'ozel', feature: 'economy', action: 'hisar-ihsan' })}
+      >
+        <Ikon ad="hazine" />
+        <span>{active ? 'İhsan yarışı sürüyor' : 'İhsan vaat et'}</span>
+      </Btn>
+    </div>
+  );
+}
+
+// ───────────────────────────── Siege towers ─────────────────────────────
+
+function KuleDurumu({ s, t, kisa }: { s: GameState; t: TowerV; kisa?: boolean }) {
+  const can = t.status === 'hazir' || t.status === 'bekliyor';
+  const sec = s.sections[t.sectionId];
+  return (
+    <>
+      <div class="secim-izgara">
+        {t.status === 'insa' && <BarSatir ad="Yapım" deger={t.progress} tur="ahsap" />}
+        {t.status !== 'insa' && t.status !== 'yikildi' && <BarSatir ad="Surlara" deger={t.approach} tur="altin" />}
+        {(t.status === 'yaniyor' || t.burn > 0) && <BarSatir ad="Yangın" deger={t.burn} tur="kizgin" />}
+        {!kisa && sec && <BarSatir ad="Hendek dolu" deger={sec.moatFill} tur="toprak" isaret={t.moatNeed} />}
+      </div>
+      {t.blocked && <div class="secim-durum-yazi kirmizi-yazi">{t.blocked}</div>}
+      {t.status !== 'yaniyor' && t.status !== 'yikildi' && t.status !== 'surda' && (
+        <div class="emirler">
+          <Btn
+            tur="kirmizi"
+            class="emir-btn"
+            disabled={!can || !!t.blocked}
+            ipucu={<div class="ipucu-icerik">{t.blocked ?? (can ? 'Kuleyi surlara doğru it. Hendek dolmadan geçemez.' : 'Kule zaten ilerliyor.')}</div>}
+            onClick={() => store.dispatch({ t: 'kule-ilerlet', sectionId: t.sectionId })}
+          >
+            <Ikon ad="ozel-kule" />
+            <span>{t.status === 'ilerliyor' ? 'İlerliyor…' : 'Kuleyi ilerlet'}</span>
+          </Btn>
+        </div>
+      )}
+    </>
+  );
+}
+
+function KulePaneli({ s, t }: { s: GameState; t: TowerV }) {
+  const sec = s.sections[t.sectionId];
+  return (
+    <>
+      <Ust
+        ikon={<Ikon ad="ozel-kule" olcek={2} />}
+        ad="Kuşatma kulesi"
+        alt={sec?.name ?? t.sectionId}
+        sag={<span class={`durum kule-${t.status}`}>{t.statusText}</span>}
+      />
+      <KuleDurumu s={s} t={t} />
+      <div class="secim-aciklama">Ahşap iskelet, üstü ıslak öküz derileriyle kaplı; tepesinden surlara köprü iner. Rumlar onu gece barut fıçılarıyla yakmaya çalışır.</div>
+    </>
+  );
+}
+
 // ───────────────────────────── Wall sections ─────────────────────────────
 
 const KIND_ADI: Record<string, string> = { kara: 'Kara surları', halic: 'Haliç surları', marmara: 'Marmara surları' };
@@ -375,8 +484,14 @@ function SurPaneli({ s, w, selGroups }: { s: GameState; w: WallSection; selGroup
   const kara = w.kind === 'kara';
   const hint = (r: string | null) => (r ? <div class="ipucu-icerik kirmizi-yazi">{r}</div> : undefined);
   const r1 = !siege ? 'Kuşatma başlamadı' : guns.length === 0 ? 'Menzilde hazır top yok' : null;
-  const r2 = !siege ? 'Kuşatma başlamadı' : !kara ? 'Yalnızca kara surlarına lağım kazılır' : !lag ? 'Lağımcı birliği yok' : null;
-  const r3 = !siege ? 'Kuşatma başlamadı' : !kara ? 'Kule yalnızca kara surlarına yanaştırılır' : s.flags[FLAG.kuleYapildi] && !s.flags[FLAG.kuleYandi] ? 'Kule zaten kuruldu' : null;
+  const r2 =
+    (!siege ? 'Kuşatma başlamadı' : !kara ? 'Yalnızca kara surlarına lağım kazılır' : !lag ? 'Lağımcı birliği yok' : null) ?? (lag ? opt.canDigMine(s, w.id, lag.id) : null);
+  const tower = opt.towers(s).find((t) => t.sectionId === w.id && t.status !== 'yikildi') ?? null;
+  const r3 =
+    (!siege ? 'Kuşatma başlamadı' : !kara ? 'Kule yalnızca kara surlarına yanaştırılır' : s.flags[FLAG.kuleYapildi] && !s.flags[FLAG.kuleYandi] && !opt.towers(s).length ? 'Kule zaten kuruldu' : null) ??
+    opt.canBuildTower(s, w.id);
+  const moat = kara && siege ? opt.moatWork(s, w.id) : null;
+  const free = safe(() => workforceInfo(s).idle, Math.max(0, s.workforce.total - s.workforce.assigned));
   const defText = opt.sectionDefenseText(s, w.id);
   const assault = opt.assaultAt(s, w.id);
   const r4 = !siege ? 'Kuşatma başlamadı' : !kara || !sdef?.moat ? 'Bu kesimde hendek yok' : w.moatFill >= 0.99 ? 'Hendek dolu' : !doldur ? 'Azap ya da başıbozuk birliği yok' : null;
@@ -414,6 +529,14 @@ function SurPaneli({ s, w, selGroups }: { s: GameState; w: WallSection; selGroup
         </div>
       )}
       {defText && <div class="secim-durum-yazi">{defText}</div>}
+      {tower && (
+        <div class="kule-kutusu">
+          <div class="hucum-baslik">
+            <Ikon ad="ozel-kule" /> Kuşatma kulesi · <span class="kucuk">{tower.statusText}</span>
+          </div>
+          <KuleDurumu s={s} t={tower} kisa />
+        </div>
+      )}
       <div class="secim-izgara">
         {w.outerMax > 0 && <BarSatir ad="Dış sur" deger={w.outer} max={w.outerMax} tur="tas" />}
         <BarSatir ad={w.outerMax > 0 ? 'İç sur' : 'Sur'} deger={w.inner} max={w.innerMax} tur="tas" />
@@ -422,6 +545,34 @@ function SurPaneli({ s, w, selGroups }: { s: GameState; w: WallSection; selGroup
         <Satir ad="Savunucu">
           <span class="num">≈{fmtInt(Math.round(w.defenders / 50) * 50)}</span>
         </Satir>
+        {moat && moat.hasMoat && (
+          <div class="satir genis amele-satiri">
+            <span class="satir-ad">Hendekte</span>
+            <span class="satir-deger">
+              <span class="num">{fmtInt(moat.men)}</span> kişi
+              <Btn
+                tur="kagit"
+                class="kare-btn"
+                disabled={moat.amele <= 0}
+                ipucu={<div class="ipucu-icerik">Ameleyi geri çağır</div>}
+                onClick={() => store.dispatch({ t: 'ozel', feature: 'siegeworks', action: 'amele-hendek', payload: { sectionId: w.id, workers: Math.max(0, moat.amele - 200) } })}
+              >
+                −
+              </Btn>
+              <span class="num">{fmtInt(moat.amele)}</span>
+              <span class="soluk">amele</span>
+              <Btn
+                tur="kagit"
+                class="kare-btn"
+                disabled={moat.amele >= moat.ameleMax || free <= 0 || moat.fill >= 0.99}
+                ipucu={<div class="ipucu-icerik">Boştaki ameleden 200 kişiyi hendeğe gönder (en çok {fmtInt(moat.ameleMax)}). Okçuların menzilinde kayıp verirler.</div>}
+                onClick={() => store.dispatch({ t: 'ozel', feature: 'siegeworks', action: 'amele-hendek', payload: { sectionId: w.id, workers: Math.min(moat.ameleMax, moat.amele + 200) } })}
+              >
+                +
+              </Btn>
+            </span>
+          </div>
+        )}
         <Satir ad="Döven toplar" genis>
           {aiming.length ? (
             <span class="kucuk">
@@ -445,7 +596,19 @@ function SurPaneli({ s, w, selGroups }: { s: GameState; w: WallSection; selGroup
           <Ikon ad="emir-lagim" />
           <span>Lağım kaz</span>
         </Btn>
-        <Btn tur="lapis" class="emir-btn" disabled={!!r3} ipucu={hint(r3) ?? <div class="ipucu-icerik">Kereste ve ıslak deriyle kaplı kuşatma kulesi kurulur.</div>} onClick={() => store.dispatch({ t: 'kule-insa', sectionId: w.id })}>
+        <Btn
+          tur="lapis"
+          class="emir-btn"
+          disabled={!!r3 || !!tower}
+          ipucu={
+            hint(tower ? 'Bu kesimde zaten bir kule var' : r3) ?? (
+              <div class="ipucu-icerik">
+                Kereste ve ıslak deriyle kaplı kuşatma kulesi kurulur. <span class="maliyet-satir">{fmtCost(opt.towerCost())}</span>
+              </div>
+            )
+          }
+          onClick={() => store.dispatch({ t: 'kule-insa', sectionId: w.id })}
+        >
           <Ikon ad="ozel-kule" />
           <span>Kule inşa</span>
         </Btn>
@@ -483,9 +646,33 @@ function GemiPaneli({ s, sh }: { s: GameState; sh: Ship }) {
           </Satir>
         )}
       </div>
+      {sh.side === 'osmanli' && (
+        <div class="secim-emir-durum">
+          Donanma komutanı: <b>{safe(() => navyCommander(s).name, 'Baltaoğlu Süleyman Bey')}</b>
+        </div>
+      )}
       {def?.desc && <div class="secim-aciklama">{def.desc}</div>}
+      {sh.side === 'osmanli' && <DemirleBtn ships={[sh]} />}
       {sh.side === 'osmanli' && <div class="ipucu-satiri">Sağ tık: gemiyi oraya gönder</div>}
     </>
+  );
+}
+
+function DemirleBtn({ ships }: { ships: Ship[] }) {
+  const ids = ships.filter((x) => x.side === 'osmanli' && x.status !== 'batik' && x.status !== 'karada').map((x) => x.id);
+  if (!ids.length) return null;
+  return (
+    <div class="emirler">
+      <Btn
+        tur="lapis"
+        class="emir-btn"
+        ipucu={<div class="ipucu-icerik">Gemiler demir yerlerine (Diplokionion ya da Haliç’teki demirlik) döner.</div>}
+        onClick={() => store.dispatch({ t: 'ozel', feature: 'navy', action: 'demirle', payload: ids })}
+      >
+        <Ikon ad="demir" />
+        <span>Demirle</span>
+      </Btn>
+    </div>
   );
 }
 
@@ -502,6 +689,7 @@ function GemilerPaneli({ ships }: { ships: Ship[] }) {
           </span>
         ))}
       </div>
+      <DemirleBtn ships={ships} />
       <div class="ipucu-satiri">Sağ tık: filoyu oraya gönder</div>
     </>
   );
@@ -509,13 +697,37 @@ function GemilerPaneli({ ships }: { ships: Ship[] }) {
 
 function LagimPaneli({ s, m }: { s: GameState; m: Mine }) {
   const sec = s.sections[m.sectionId];
+  const v = opt.mine(s, m.id);
+  const crew = m.groupId != null ? s.groups.find((g) => g.id === m.groupId) : null;
   return (
     <>
-      <Ust ikon={<Ikon ad="emir-lagim" olcek={2} />} ad={`Lağım — ${sec?.name ?? m.sectionId}`} alt={MINE_STATUS_ADI[m.status] ?? m.status} />
+      <Ust
+        ikon={<Ikon ad="emir-lagim" olcek={2} />}
+        ad={`Lağım — ${sec?.name ?? m.sectionId}`}
+        alt={crew ? crew.name : 'Sırp ve Novo Brdo madencileri'}
+        sag={<span class={`durum lagim-${m.status}`}>{MINE_STATUS_ADI[m.status] ?? m.status}</span>}
+      />
+      {v?.statusText && <div class="secim-durum-yazi">{v.statusText}</div>}
       <div class="secim-izgara">
         <BarSatir ad="Tünel" deger={m.progress} tur="toprak" />
+        {v?.counter != null && <BarSatir ad="Karşı lağım" deger={v.counter} tur="kirmizi" />}
         <Satir ad="Durum">{m.detected ? <b class="kirmizi-yazi">Bizanslılar fark etti!</b> : <span>Gizli</span>}</Satir>
       </div>
+      {m.detected && <div class="secim-aciklama">Johannes Grant’ın adamları kazmaların sesini dinleyip karşı tünel açıyor: duman, ateş ya da çökertme gelebilir.</div>}
+      {(v?.canFire ?? m.status === 'hazir') && (
+        <div class="emirler">
+          <Btn
+            tur="kirmizi"
+            class="emir-btn"
+            sesi="onay"
+            ipucu={<div class="ipucu-icerik">Tünelin destek kalasları ateşlenir; tavan çöker ve üstündeki sur oturur.</div>}
+            onClick={() => store.dispatch({ t: 'ozel', feature: 'siegeworks', action: 'lagim-atesle', payload: { mineId: m.id } })}
+          >
+            <Ikon ad="emir-hucum" />
+            <span>Destekleri ateşle</span>
+          </Btn>
+        </div>
+      )}
     </>
   );
 }
@@ -529,6 +741,7 @@ function resolve(s: GameState, sel: PickResult[]) {
   let building: Building | null = null;
   let section: WallSection | null = null;
   let mine: Mine | null = null;
+  let tower: TowerV | null = null;
   for (const p of sel) {
     if (p.kind === 'group') {
       const g = s.groups.find((x) => x.id === p.id);
@@ -539,11 +752,15 @@ function resolve(s: GameState, sel: PickResult[]) {
     } else if (p.kind === 'ship') {
       const x = s.ships.find((y) => y.id === p.id);
       if (x) ships.push(x);
-    } else if (p.kind === 'building') building = building ?? s.buildings.find((x) => x.id === p.id) ?? null;
+    } else if (p.kind === 'building') {
+      const b = s.buildings.find((x) => x.id === p.id);
+      if (b) building = building ?? b;
+      else if (Number(p.id) < 0) tower = tower ?? opt.tower(s, Number(p.id));
+    }
     else if (p.kind === 'section') section = section ?? s.sections[String(p.id)] ?? null;
     else if (p.kind === 'mine') mine = mine ?? s.mines.find((x) => x.id === p.id) ?? null;
   }
-  return { groups, cannons, ships, building, section, mine };
+  return { groups, cannons, ships, building, section, mine, tower };
 }
 
 export function Secim() {
@@ -568,6 +785,9 @@ export function Secim() {
   } else if (r.section) {
     body = <SurPaneli s={s} w={r.section} selGroups={[]} />;
     kind = 'sur';
+  } else if (r.tower) {
+    body = <KulePaneli s={s} t={r.tower} />;
+    kind = 'kule';
   } else if (r.building) {
     body = <YapiPaneli s={s} b={r.building} />;
     kind = 'yapi';

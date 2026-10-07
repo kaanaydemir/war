@@ -3,7 +3,8 @@ import type { RenderContext } from '../../core/feature';
 import { FLAG } from '../../core/flags';
 import type { TilePt } from '../../core/iso';
 import type { GameState, SectionId } from '../../core/state';
-import { sectionOutwardNormal, sectionPoint, towerPositions } from '../fortifications/api';
+import { sectionAt, sectionOutwardNormal, sectionPoint, towerPositions } from '../fortifications/api';
+import { LADDER, ladderBaseX, ladderW } from './art';
 import { assaultMembers } from './combat';
 import { frameOf, hash, type Layout, type Spr, type SpritePool } from './render-util';
 import { army } from './state';
@@ -83,6 +84,8 @@ export class AssaultRenderer {
   private banners: Spr[] = [];
   private hasan: { s: Spr; t: number; x: number; y0: number; y1: number } | null = null;
   private shots = 0;
+  /** Kerkoporta (Doukas): a few dozen men slipping through the open postern. */
+  private kerko: { sprites: Spr[]; from: TilePt; to: TilePt; tower: TilePt | null } | null = null;
 
   constructor(
     private rc: RenderContext,
@@ -149,6 +152,7 @@ export class AssaultRenderer {
     this.updateDying(dt);
     this.updateBanners(state);
     this.updateHasan(dt);
+    this.updateKerkoporta(state);
   }
 
   private newView(state: GameState, sid: SectionId): AssaultView {
@@ -168,8 +172,8 @@ export class AssaultRenderer {
       const base = this.wp(wall.tx + nn.tx * 0.6, wall.ty + nn.ty * 0.6);
       const top = this.wp(wall.tx, wall.ty);
       const s = this.pool.get(`army/merdiven-${lean}`, 0, 'inf');
-      if (lean === 'u') s.setOrigin(7.5 / 14, 29 / 30);
-      else s.setOrigin(4.5 / 22, 27 / 28);
+      const L = LADDER[lean];
+      s.setOrigin((ladderBaseX(L.len) + 0.5) / ladderW(L.len), (L.h - 1) / L.h);
       s.setFlipX(flip);
       ladders.push({
         s,
@@ -442,6 +446,7 @@ export class AssaultRenderer {
     const f = army(state).final;
     const spots: TilePt[] = [];
     if (state.flags[FLAG.sancakDikildi] && f?.bannerAt && (!this.hasan || this.hasan.t > 1.6)) spots.push(f.bannerAt);
+    if (this.kerko?.tower) spots.push(this.kerko.tower);
     if (state.flags[FLAG.sehirDustu] && f) {
       for (const sid of [f.main, ...f.side]) {
         const tw = towerPositions(sid);
@@ -462,6 +467,75 @@ export class AssaultRenderer {
       s.setPosition(Math.round(w.x), Math.round(w.y) - 26)
         .setFrame(Math.floor(this.time * 6 + i) % 4)
         .setDepth(Math.round(w.y) + 4);
+    });
+  }
+
+  private releaseKerko(): void {
+    if (!this.kerko) return;
+    for (const s of this.kerko.sprites) this.pool.release(s);
+    this.kerko = null;
+  }
+
+  private updateKerkoporta(state: GameState): void {
+    const f = army(state).final;
+    const at = f?.kerkoporta ? f.kerkoAt : null;
+    if (!at || !state.flags[FLAG.kerkoporta]) {
+      this.releaseKerko();
+      return;
+    }
+    if (!this.kerko) {
+      const sid = sectionAt(at.tx, at.ty, 4);
+      let t = 0.5;
+      if (sid) {
+        let bd = Infinity;
+        for (let k = 0; k <= 20; k++) {
+          const q = sectionPoint(sid, k / 20);
+          const dd = Math.hypot(q.tx - at.tx, q.ty - at.ty);
+          if (dd < bd) {
+            bd = dd;
+            t = k / 20;
+          }
+        }
+      }
+      const n = sid ? sectionOutwardNormal(sid, t) : { tx: -1, ty: 0 };
+      let tower: TilePt | null = null;
+      if (sid) {
+        let bd = Infinity;
+        for (const tw of towerPositions(sid)) {
+          const dd = Math.hypot(tw.tx - at.tx, tw.ty - at.ty);
+          if (dd < bd && dd > 0.8) {
+            bd = dd;
+            tower = { tx: tw.tx, ty: tw.ty };
+          }
+        }
+      }
+      const sprites: Spr[] = [];
+      for (let i = 0; i < 9; i++) sprites.push(this.pool.get(i === 0 ? 'army/sancak-kirmizi' : `army/yeniceri-${i % 3}`, 0, i === 0 ? 'ban' : 'inf'));
+      this.kerko = { sprites, from: { tx: at.tx + n.tx * 3.2, ty: at.ty + n.ty * 3.2 }, to: { tx: at.tx - n.tx * 3, ty: at.ty - n.ty * 3 }, tower };
+    }
+    const k = this.kerko;
+    const mid = this.wp((k.from.tx + k.to.tx) / 2, (k.from.ty + k.to.ty) / 2);
+    const show = state.time.phase === 'kusatma' && this.inView(mid.x, mid.y, 200);
+    const dx = k.to.tx - k.from.tx;
+    const dy = k.to.ty - k.from.ty;
+    const fc = { back: dx + dy < -0.05, flip: dx - dy < 0 };
+    k.sprites.forEach((s, i) => {
+      if (!show) {
+        s.setVisible(false);
+        return;
+      }
+      // a thin stream through the postern, one by one, fading in outside and out inside the city
+      const u = (this.time * 0.12 + i / k.sprites.length) % 1;
+      const lat = (hash(i, 77) - 0.5) * (u < 0.4 || u > 0.6 ? 0.9 : 0.15);
+      const w = this.wp(k.from.tx + dx * u - dy * lat * 0.4, k.from.ty + dy * u + dx * lat * 0.4);
+      const a = Math.min(1, u / 0.12, (1 - u) / 0.18);
+      const layout: Layout = i === 0 ? 'ban' : 'inf';
+      s.setVisible(true)
+        .setAlpha(a)
+        .setPosition(Math.round(w.x), Math.round(w.y))
+        .setFrame(frameOf(layout, 'walk', Math.floor(this.time * 9 + i * 3), fc.back))
+        .setFlipX(fc.flip)
+        .setDepth(Math.round(w.y));
     });
   }
 
@@ -521,5 +595,8 @@ export class AssaultRenderer {
     this.dying = [];
     for (const b of this.banners) this.pool.release(b);
     this.banners = [];
+    this.releaseKerko();
+    if (this.hasan) this.pool.release(this.hasan.s);
+    this.hasan = null;
   }
 }

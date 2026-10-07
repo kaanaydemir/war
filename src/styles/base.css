@@ -95,6 +95,8 @@ body.ui-gizli #ui {
   --lapis-light: #4a74b4;
   --turquoise-light: #9ae3d0;
   --fire: #f8902a;
+  /* body text: Silkscreen digits + Pixelify letters (see ui-kit.css) */
+  --font-metin: 'Fetih Rakam', 'Pixelify Sans', monospace;
 }
 
 button {

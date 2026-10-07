@@ -22,6 +22,7 @@ import { bandFor, lineWorld, type PieceDef } from './wallArt';
 type DefKind = 'mizrak' | 'mizrak2' | 'okcu' | 'okcu2' | 'ceneviz' | 'venedik';
 
 interface Defender {
+  sec: SectionId;
   spr: Phaser.GameObjects.Sprite;
   piece: PieceDef;
   kind: DefKind;
@@ -83,6 +84,9 @@ function bannerFor(tw: TowerSpec, fallen: boolean, k: number): BannerKind {
 
 export class LifeRender {
   private defenders: Defender[] = [];
+  /** figures currently shown per section */
+  private shownCount = new Map<SectionId, number>();
+  private changedSecs = new Set<SectionId>();
   private flags: Flag[] = [];
   private torches: Torch[] = [];
   private props: Prop[] = [];
@@ -91,8 +95,6 @@ export class LifeRender {
   private propSig = '';
   private acc = 10;
   private t = 0;
-  private fallen = false;
-  private lightsOn = 0;
 
   constructor(
     private rc: RenderContext,
@@ -130,8 +132,6 @@ export class LifeRender {
     let k = 0;
     for (const tw of TOWERS) {
       if (tw.kind === 'dis') continue;
-      const p0 = LINES[tw.line];
-      void p0;
       k++;
       const collapsed = tw.sectionId ? this.walls.collapsed(tw.sectionId).has(tw) : false;
       if (collapsed) continue;
@@ -185,18 +185,30 @@ export class LifeRender {
       spr.play({ key: 'fort/mangal:yan', startFrame: Math.floor(Math.random() * 6) });
       this.torches.push({ spr, x: pos.x, y: pos.y - 8, light: null, brazier: true, sec: d.sec });
     }
-    this.fallen = fallen;
   }
 
-  private rebuildDefenders(state: GameState): void {
-    for (const d of this.defenders) d.spr.destroy();
-    this.defenders = [];
-    if (cityFallen(state)) return;
+  /** Figures shown for a section: proportional to its garrison (≈1 per 55 men, max 18). */
+  private defenderCount(state: GameState, id: SectionId): number {
+    const s = state.sections[id];
+    return s && !cityFallen(state) ? Math.min(18, Math.round(s.defenders / 55)) : 0;
+  }
+
+  /** Rebuild the wall-walk figures of `only` (or of every section). */
+  private rebuildDefenders(state: GameState, only?: Set<SectionId>): void {
+    const keep: Defender[] = [];
+    for (const d of this.defenders) {
+      if (!only || only.has(d.sec)) d.spr.destroy();
+      else keep.push(d);
+    }
+    this.defenders = keep;
     const scene = this.rc.scene;
-    for (const [id, s] of Object.entries(state.sections)) {
+    for (const id of Object.keys(state.sections)) {
+      if (only && !only.has(id)) continue;
+      const n = this.defenderCount(state, id);
+      this.shownCount.set(id, n);
+      if (n <= 0) continue;
       const pieces = this.walls.pieces.filter((p) => p.def.sec === id && this.walls.levelOf(p.def) < 4);
       if (!pieces.length) continue;
-      const n = Math.min(18, Math.round(s.defenders / 55));
       for (let k = 0; k < n; k++) {
         const kind = defKindFor(id, k);
         // the defenders of 1453 manned the OUTER wall (and the stockades) in the threatened sectors
@@ -223,6 +235,7 @@ export class LifeRender {
         const o = outwardAt(LINES[d.line], t);
         const faceFlip = (o.nx - o.ny) * 16 > 0; // sprites face left; flip when the outside is to the right
         this.defenders.push({
+          sec: id,
           spr,
           piece: d,
           kind,
@@ -320,16 +333,19 @@ export class LifeRender {
     this.acc += dt;
     if (this.acc > 1) {
       this.acc = 0;
-      const lv = this.walls.pieces.map((p) => p.level + p.collapsedSig).join('');
+      const lv = this.walls.version;
       const fallen = cityFallen(state);
-      const sig = `${lv}|${fallen}|${state.flags['sancakDikildi'] ? 1 : 0}|${Object.values(state.sections)
-        .map((s) => Math.round(s.defenders / 40))
-        .join(',')}`;
+      const sig = `${lv}|${fallen}|${state.flags['sancakDikildi'] ? 1 : 0}`;
       if (sig !== this.sig) {
-        const flagSig = `${lv}|${fallen}|${state.flags['sancakDikildi'] ? 1 : 0}`;
-        if (!this.sig.startsWith(flagSig)) this.rebuildFlagsTorches(state);
+        // wall damage / fall of the city: banners, torches and every figure move
+        this.rebuildFlagsTorches(state);
         this.rebuildDefenders(state);
         this.sig = sig;
+      } else {
+        // garrison shifts: only the sections whose figure count changed
+        this.changedSecs.clear();
+        for (const id in state.sections) if (this.defenderCount(state, id) !== (this.shownCount.get(id) ?? 0)) this.changedSecs.add(id);
+        if (this.changedSecs.size) this.rebuildDefenders(state, this.changedSecs);
       }
       const psig = `${lv}|${Object.values(state.sections)
         .map((s) => Math.round(s.barricade * 10))
@@ -376,7 +392,6 @@ export class LifeRender {
         tc.light = null;
       }
     }
-    this.lightsOn = lights;
     this.updateDefenders(state, dt, view);
     for (const p of this.props) {
       const v = inV(p.x, p.y);
@@ -451,8 +466,6 @@ export class LifeRender {
       }
       d.spr.setPosition(Math.round(pos.x), Math.round(pos.y));
     }
-    void this.fallen;
-    void this.lightsOn;
   }
 
   destroy(): void {

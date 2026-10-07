@@ -22,6 +22,7 @@ import {
   reliefTension,
   splitSuffix,
   uiScale,
+  windName,
 } from '../src/ui/hud/format';
 import {
   breachColor,
@@ -149,6 +150,13 @@ describe('ui-hud format', () => {
     expect(uiScale(1920, 1080)).toBe(3);
     expect(uiScale(2560, 1440)).toBe(3);
     expect(uiScale(1920, 900)).toBe(2);
+  });
+  it('names winds by where they blow from (Turkish sailors’ compass)', () => {
+    expect(windName(-Math.PI / 2)).toBe('Kıble'); // blowing north = south wind (20 Nisan)
+    expect(windName(Math.PI / 2)).toBe('Yıldız'); // blowing south = north wind
+    expect(windName(Math.PI)).toBe('Gündoğusu'); // blowing west = east wind
+    expect(windName((3 * Math.PI) / 4)).toBe('Poyraz'); // blowing south-west = north-east wind
+    expect(windName(-Math.PI / 4)).toBe('Lodos'); // blowing north-east = south-west wind
   });
 });
 

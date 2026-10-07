@@ -45,7 +45,7 @@ function Chips(props: { chips: { label: string; value: string; good: boolean | n
     <div class="olay-cipler">
       {props.chips.map((c, i) => (
         <span key={i} class={`olay-cip ${c.good === true ? 'iyi' : c.good === false ? 'kotu' : ''}`}>
-          {c.label} <b class="num">{c.value}</b>
+          {c.label} <b>{c.value}</b>
         </span>
       ))}
     </div>
@@ -63,6 +63,8 @@ function CardBody(props: { v: EventCardView; side: boolean; px: number; imgK: nu
     }
   })();
   const revealed = tarihte || !!props.chosen;
+  // information cards read better with the text beside the miniature
+  const textRight = !v.isDecision && !props.side;
   const n = v.choices.length;
   useKeyLayer((e) => {
     if (store.ui.panel || store.ui.encyclopediaEntry) return false;
@@ -93,7 +95,7 @@ function CardBody(props: { v: EventCardView; side: boolean; px: number; imgK: nu
         <div class="olay-baslik-blok">
           <div class="olay-meta">
             <span class={`olay-tur ${KIND_CLASS[v.kind] ?? ''}`}>{KIND_SHORT[v.kind] ?? v.kindLabel}</span>
-            <span class="olay-tarih num">{v.dateLabel}</span>
+            <span class="olay-tarih">{v.dateLabel}</span>
             {v.queueLength > 0 && <span class="olay-sira">+{v.queueLength} kart bekliyor</span>}
           </div>
           <h2 class="olay-baslik">{v.title}</h2>
@@ -103,10 +105,11 @@ function CardBody(props: { v: EventCardView; side: boolean; px: number; imgK: nu
       <div class="olay-govde">
         <div class="olay-sol">
           {v.image && <EventImage imageKey={v.image} k={props.imgK} />}
-          <p class="olay-metin">{v.text}</p>
+          {!textRight && <p class="olay-metin">{v.text}</p>}
           <Chips chips={v.outcome} />
         </div>
         <div class="olay-sag">
+          {textRight && <p class="olay-metin sagda">{v.text}</p>}
           {v.isDecision && (
             <div class="olay-secimler">
               {v.choices.map((c, i) => {
@@ -167,7 +170,7 @@ function CardBody(props: { v: EventCardView; side: boolean; px: number; imgK: nu
                 </button>
               ))}
             {v.focus && (
-              <button type="button" class="olay-bag harita" onClick={() => v.focus && store.actions.focusTile(v.focus.tx, v.focus.ty, 3)}>
+              <button type="button" class="olay-bag olay-bag-harita" onClick={() => v.focus && store.actions.focusTile(v.focus.tx, v.focus.ty, 3)}>
                 Haritada göster
               </button>
             )}
